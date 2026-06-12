@@ -58,10 +58,14 @@ export const permitsCol = (db: Firestore, uid: string, projectId: string) =>
 export const inspirationCol = (db: Firestore, uid: string, projectId: string) =>
   sub(db, uid, projectId, 'inspiration').withConverter(zodConverter(InspirationItem))
 
-// Project-wide dashboards (all blocked tasks, overdue selections) use collection
+// Project-wide dashboards (all blocked tasks, overdue selections) and the
+// rollup (all tasks + checklist items of the current project) use collection
 // group queries; rules authorize them by the denormalized uid on each doc.
 export const tasksGroup = (db: Firestore) =>
   collectionGroup(db, 'tasks').withConverter(zodConverter(Task))
 
 export const selectionsGroup = (db: Firestore) =>
   collectionGroup(db, 'selections').withConverter(zodConverter(Selection))
+
+export const checklistGroup = (db: Firestore) =>
+  collectionGroup(db, 'checklist').withConverter(zodConverter(ChecklistItem))

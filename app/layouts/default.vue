@@ -42,7 +42,8 @@ function toggleTheme() {
         aria-label="Toggle navigation"
         @click="mobile ? (drawer = !drawer) : (rail = !rail)"
       />
-      <v-app-bar-title>Remodel Planner</v-app-bar-title>
+      <v-app-bar-title class="flex-grow-0 mr-2">Remodel Planner</v-app-bar-title>
+      <AppProjectMenu v-if="user" />
       <v-spacer />
       <!-- UX9: persistent offline pill + subtle sync indicator; never a spinner. -->
       <v-chip
@@ -63,7 +64,8 @@ function toggleTheme() {
           aria-label="Syncing changes"
         />
       </v-fade-transition>
-      <!-- Project ring lands here in the rollup phases (UX1). -->
+      <!-- UX1: project-level progress ring, fed by the shared rollup. -->
+      <AppProjectRing v-if="user" />
       <v-btn
         :icon="themeName === 'light' ? 'mdi-weather-night' : 'mdi-weather-sunny'"
         :aria-label="themeName === 'light' ? 'Switch to dark theme' : 'Switch to light theme'"

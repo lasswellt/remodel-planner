@@ -40,3 +40,6 @@ serviceAccount*.json
 
 # blitz plugin session state
 .cc-sessions
+
+# Playwright MCP session artifacts
+.playwright-mcp

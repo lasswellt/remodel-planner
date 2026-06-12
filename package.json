@@ -7,7 +7,7 @@
     "node": ">=22.12"
   },
   "scripts": {
-    "dev": "nuxt dev",
+    "dev": "nuxt dev --dotenv .env.development",
     "build": "nuxt build",
     "generate": "nuxt generate",
     "preview": "nuxt preview",

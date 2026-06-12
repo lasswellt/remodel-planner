@@ -66,11 +66,14 @@ service cloud.firestore {
       return d.title is string && d.url is string;
     }
 
-    // ---- collection-group reads for project-wide dashboards ----
+    // ---- collection-group reads for project-wide dashboards + rollups ----
     match /{path=**}/tasks/{taskId} {
       allow read: if request.auth != null && resource.data.uid == request.auth.uid;
     }
     match /{path=**}/selections/{selectionId} {
+      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+    match /{path=**}/checklist/{itemId} {
       allow read: if request.auth != null && resource.data.uid == request.auth.uid;
     }
 
