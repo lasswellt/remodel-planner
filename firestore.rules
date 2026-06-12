@@ -1,0 +1,134 @@
+rules_version = '2';
+
+// Everything is scoped under users/{uid}. A document is readable/writable only
+// by its authenticated owner. Writes additionally validate the denormalized uid
+// and the enum/required fields the app relies on, so a malformed or spoofed
+// write is rejected at the database boundary (not just in the client).
+//
+// Project-wide dashboards use collection-group queries on tasks and selections;
+// those are authorized by the denormalized resource.data.uid.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // On create/update, the doc must claim its true owner.
+    function ownsPayload(uid) {
+      return request.resource.data.uid == uid;
+    }
+
+    function isEnum(field, allowed) {
+      return field is string && field in allowed;
+    }
+
+    // ---- per-entity field validation ----
+    function validRoom() {
+      let d = request.resource.data;
+      return d.name is string
+        && isEnum(d.type, ['kitchen','bathroom','bedroom','living-room','dining-room','home-office','laundry-utility','mudroom-entry','hallway-stairs','garage','exterior'])
+        && isEnum(d.status, ['planned','in-progress','done']);
+    }
+    function validTask() {
+      let d = request.resource.data;
+      return d.label is string
+        && isEnum(d.phase, ['demo','rough-in','insulation','drywall','paint','flooring','trim','fixtures','punch-list'])
+        && isEnum(d.status, ['todo','in-progress','blocked','done']);
+    }
+    function validBudgetLine() {
+      let d = request.resource.data;
+      return d.label is string
+        && isEnum(d.category, ['materials','labor','permits','fixtures','other'])
+        && d.estimateCents is int && d.estimateCents >= 0;
+    }
+    function validSelection() {
+      let d = request.resource.data;
+      return d.label is string
+        && isEnum(d.status, ['considering','decided','ordered','delivered','installed']);
+    }
+    function validPermit() {
+      let d = request.resource.data;
+      return d.scope is string
+        && isEnum(d.status, ['needed','applied','issued','closed']);
+    }
+    function validPhoto() {
+      let d = request.resource.data;
+      return d.storagePath is string
+        && isEnum(d.stage, ['before','during','after']);
+    }
+    function validChecklist() {
+      let d = request.resource.data;
+      return d.label is string && d.done is bool;
+    }
+    function validInspiration() {
+      let d = request.resource.data;
+      return d.title is string && d.url is string;
+    }
+
+    // ---- collection-group reads for project-wide dashboards ----
+    match /{path=**}/tasks/{taskId} {
+      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+    match /{path=**}/selections/{selectionId} {
+      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
+    // ---- the owned subtree ----
+    match /users/{uid} {
+      allow read, write: if isOwner(uid);
+
+      match /projects/{projectId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && request.resource.data.uid == uid
+          && request.resource.data.name is string
+          && request.resource.data.totalBudgetCents is int;
+        allow delete: if isOwner(uid);
+
+        match /rooms/{roomId} {
+          allow read: if isOwner(uid);
+          allow create, update: if isOwner(uid) && ownsPayload(uid) && validRoom();
+          allow delete: if isOwner(uid);
+
+          match /checklist/{itemId} {
+            allow read: if isOwner(uid);
+            allow create, update: if isOwner(uid) && ownsPayload(uid) && validChecklist();
+            allow delete: if isOwner(uid);
+          }
+          match /budgetLines/{lineId} {
+            allow read: if isOwner(uid);
+            allow create, update: if isOwner(uid) && ownsPayload(uid) && validBudgetLine();
+            allow delete: if isOwner(uid);
+          }
+          match /tasks/{taskId} {
+            allow read: if isOwner(uid);
+            allow create, update: if isOwner(uid) && ownsPayload(uid) && validTask();
+            allow delete: if isOwner(uid);
+          }
+          match /selections/{selectionId} {
+            allow read: if isOwner(uid);
+            allow create, update: if isOwner(uid) && ownsPayload(uid) && validSelection();
+            allow delete: if isOwner(uid);
+          }
+          match /photos/{photoId} {
+            allow read: if isOwner(uid);
+            allow create, update: if isOwner(uid) && ownsPayload(uid) && validPhoto();
+            allow delete: if isOwner(uid);
+          }
+        }
+
+        match /permits/{permitId} {
+          allow read: if isOwner(uid);
+          allow create, update: if isOwner(uid) && ownsPayload(uid) && validPermit();
+          allow delete: if isOwner(uid);
+        }
+        match /inspiration/{itemId} {
+          allow read: if isOwner(uid);
+          allow create, update: if isOwner(uid) && ownsPayload(uid) && validInspiration();
+          allow delete: if isOwner(uid);
+        }
+      }
+    }
+  }
+}

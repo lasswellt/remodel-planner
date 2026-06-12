@@ -1,0 +1,7 @@
+{
+  "projects": {
+    "default": "remodel-planner-dev",
+    "dev": "remodel-planner-dev",
+    "prod": "remodel-planner-prod"
+  }
+}
