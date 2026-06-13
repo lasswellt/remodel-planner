@@ -5,13 +5,17 @@ import {
 } from 'firebase/firestore'
 
 // Enable Firestore offline persistence with multi-tab support so the app keeps
-// working through connectivity drops (UX9). Must run before anything calls
-// getFirestore(); enforce:'pre' orders it ahead of VueFire's lazy Firestore
-// access. If Firestore is somehow already initialized, fall back to the default
-// cache rather than crash.
+// working through connectivity drops (UX9). This must run AFTER nuxt-vuefire's
+// app plugin creates the Firebase app (a default plugin that provides
+// $firebaseApp) but BEFORE the first lazy getFirestore() — which only happens
+// when a store/composable calls useFirestore() during component setup, i.e.
+// after all plugins. A default app/ plugin sits in exactly that window; using
+// enforce:'pre' here (the previous bug) ran ahead of app creation, so
+// useFirebaseApp() was undefined and persistence silently fell back to the
+// in-memory cache. If Firestore is somehow already initialized, fall back to
+// the default cache rather than crash.
 export default defineNuxtPlugin({
   name: 'firestore-offline',
-  enforce: 'pre',
   setup() {
     const app = useFirebaseApp()
     try {
