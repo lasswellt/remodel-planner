@@ -1,9 +1,8 @@
 rules_version = '2';
 
 // Everything is scoped under users/{uid}. A document is readable/writable only
-// by its authenticated owner. Writes additionally validate the denormalized uid
-// and the enum/required fields the app relies on, so a malformed or spoofed
-// write is rejected at the database boundary (not just in the client).
+// by its authenticated owner, OR by a project member (editor role) whose
+// membership doc exists at users/{ownerUid}/projects/{projectId}/members/{memberUid}.
 //
 // Project-wide dashboards use collection-group queries on tasks and selections;
 // those are authorized by the denormalized resource.data.uid.
@@ -14,13 +13,18 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == uid;
     }
 
-    // On create/update, the doc must claim its true owner.
     function ownsPayload(uid) {
       return request.resource.data.uid == uid;
     }
 
     function isEnum(field, allowed) {
       return field is string && field in allowed;
+    }
+
+    // Check membership via existence of the member doc (cheaper than get()).
+    function isMember(ownerUid, projectId) {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/users/$(ownerUid)/projects/$(projectId)/members/$(request.auth.uid));
     }
 
     // ---- per-entity field validation ----
@@ -66,70 +70,103 @@ service cloud.firestore {
       return d.title is string && d.url is string;
     }
 
+    // ---- invite tokens (top-level) ----
+    // Any signed-in user can read an invite to accept it.
+    // Only the owning user can create or revoke invites for their projects.
+    match /invites/{token} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.ownerUid == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.ownerUid == request.auth.uid;
+    }
+
     // ---- collection-group reads for project-wide dashboards + rollups ----
+    // Owner reads by their own denormalized uid; a project member reads via
+    // isMember(ownerUid, projectId) — every OwnerScoped doc carries both uid
+    // and projectId, so the rollup query (filtered by the OWNER uid) resolves
+    // for members too. Without the isMember branch a member's rings read empty.
     match /{path=**}/tasks/{taskId} {
-      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow read: if request.auth != null
+        && (resource.data.uid == request.auth.uid || isMember(resource.data.uid, resource.data.projectId));
     }
     match /{path=**}/selections/{selectionId} {
-      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow read: if request.auth != null
+        && (resource.data.uid == request.auth.uid || isMember(resource.data.uid, resource.data.projectId));
     }
     match /{path=**}/checklist/{itemId} {
-      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow read: if request.auth != null
+        && (resource.data.uid == request.auth.uid || isMember(resource.data.uid, resource.data.projectId));
     }
 
     // ---- the owned subtree ----
     match /users/{uid} {
       allow read, write: if isOwner(uid);
 
+      // Shared-project pointers written when the user accepts an invite.
+      match /sharedProjects/{refId} {
+        allow read, write: if isOwner(uid);
+      }
+
       match /projects/{projectId} {
-        allow read: if isOwner(uid);
-        allow create, update: if isOwner(uid)
+        allow read: if isOwner(uid) || isMember(uid, projectId);
+        allow create: if isOwner(uid)
+          && request.resource.data.uid == uid
+          && request.resource.data.name is string
+          && request.resource.data.totalBudgetCents is int;
+        allow update: if isOwner(uid)
           && request.resource.data.uid == uid
           && request.resource.data.name is string
           && request.resource.data.totalBudgetCents is int;
         allow delete: if isOwner(uid);
 
+        // Members subcollection. A user can write their own membership doc
+        // (accepting an invite). Only the project owner can delete others'.
+        match /members/{memberUid} {
+          allow read: if isOwner(uid) || request.auth.uid == memberUid;
+          allow create: if request.auth != null && request.auth.uid == memberUid;
+          allow delete: if isOwner(uid) || (request.auth != null && request.auth.uid == memberUid);
+        }
+
         match /rooms/{roomId} {
-          allow read: if isOwner(uid);
-          allow create, update: if isOwner(uid) && ownsPayload(uid) && validRoom();
-          allow delete: if isOwner(uid);
+          allow read: if isOwner(uid) || isMember(uid, projectId);
+          allow create, update: if (isOwner(uid) || isMember(uid, projectId)) && ownsPayload(uid) && validRoom();
+          allow delete: if isOwner(uid) || isMember(uid, projectId);
 
           match /checklist/{itemId} {
-            allow read: if isOwner(uid);
-            allow create, update: if isOwner(uid) && ownsPayload(uid) && validChecklist();
-            allow delete: if isOwner(uid);
+            allow read: if isOwner(uid) || isMember(uid, projectId);
+            allow create, update: if (isOwner(uid) || isMember(uid, projectId)) && ownsPayload(uid) && validChecklist();
+            allow delete: if isOwner(uid) || isMember(uid, projectId);
           }
           match /budgetLines/{lineId} {
-            allow read: if isOwner(uid);
-            allow create, update: if isOwner(uid) && ownsPayload(uid) && validBudgetLine();
-            allow delete: if isOwner(uid);
+            allow read: if isOwner(uid) || isMember(uid, projectId);
+            allow create, update: if (isOwner(uid) || isMember(uid, projectId)) && ownsPayload(uid) && validBudgetLine();
+            allow delete: if isOwner(uid) || isMember(uid, projectId);
           }
           match /tasks/{taskId} {
-            allow read: if isOwner(uid);
-            allow create, update: if isOwner(uid) && ownsPayload(uid) && validTask();
-            allow delete: if isOwner(uid);
+            allow read: if isOwner(uid) || isMember(uid, projectId);
+            allow create, update: if (isOwner(uid) || isMember(uid, projectId)) && ownsPayload(uid) && validTask();
+            allow delete: if isOwner(uid) || isMember(uid, projectId);
           }
           match /selections/{selectionId} {
-            allow read: if isOwner(uid);
-            allow create, update: if isOwner(uid) && ownsPayload(uid) && validSelection();
-            allow delete: if isOwner(uid);
+            allow read: if isOwner(uid) || isMember(uid, projectId);
+            allow create, update: if (isOwner(uid) || isMember(uid, projectId)) && ownsPayload(uid) && validSelection();
+            allow delete: if isOwner(uid) || isMember(uid, projectId);
           }
           match /photos/{photoId} {
-            allow read: if isOwner(uid);
-            allow create, update: if isOwner(uid) && ownsPayload(uid) && validPhoto();
-            allow delete: if isOwner(uid);
+            allow read: if isOwner(uid) || isMember(uid, projectId);
+            allow create, update: if (isOwner(uid) || isMember(uid, projectId)) && ownsPayload(uid) && validPhoto();
+            allow delete: if isOwner(uid) || isMember(uid, projectId);
           }
         }
 
         match /permits/{permitId} {
-          allow read: if isOwner(uid);
-          allow create, update: if isOwner(uid) && ownsPayload(uid) && validPermit();
-          allow delete: if isOwner(uid);
+          allow read: if isOwner(uid) || isMember(uid, projectId);
+          allow create, update: if (isOwner(uid) || isMember(uid, projectId)) && ownsPayload(uid) && validPermit();
+          allow delete: if isOwner(uid) || isMember(uid, projectId);
         }
         match /inspiration/{itemId} {
-          allow read: if isOwner(uid);
-          allow create, update: if isOwner(uid) && ownsPayload(uid) && validInspiration();
-          allow delete: if isOwner(uid);
+          allow read: if isOwner(uid) || isMember(uid, projectId);
+          allow create, update: if (isOwner(uid) || isMember(uid, projectId)) && ownsPayload(uid) && validInspiration();
+          allow delete: if isOwner(uid) || isMember(uid, projectId);
         }
       }
     }

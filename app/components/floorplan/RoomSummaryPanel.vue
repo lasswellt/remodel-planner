@@ -1,24 +1,24 @@
 <script setup lang="ts">
-import { useCollection, useCurrentUser, useFirestore } from 'vuefire'
+import { useCollection, useFirestore } from 'vuefire'
 import type { Room, RoomStatus, RoomType } from '~/models'
 import { ROOM_TYPE_ICONS, ROOM_TYPE_OPTIONS } from '~/config/rooms'
-import { sqFt } from '~/utils/geometry'
+import { DEFAULT_GRID_STEP, dimsLabel, inchesToFeetInput, parseFeetToInches, sqFt, WORLD } from '~/utils/geometry'
 import { budgetLinesCol } from '~/utils/firestore-paths'
 import { formatMoney } from '~/utils/money'
 import { useRoomsStore } from '~/stores/rooms'
+import { useProjectStore } from '~/stores/project'
 
-// Click-a-room summary (UX5): progress, budget remaining, next task at a
-// glance, with expansion panels for the full lists. Deeper editing lives on
-// the dedicated pages in later phases.
 const props = defineProps<{ room: Room }>()
 const emit = defineEmits<{
   close: []
   deleteRequest: [id: string]
   rotate: [id: string]
+  activateNotchTool: []
+  deleteNotch: [roomId: string, notchId: string]
 }>()
 
 const db = useFirestore()
-const user = useCurrentUser()
+const projectStore = useProjectStore()
 const roomsStore = useRoomsStore()
 const rollup = useRollup()
 
@@ -29,8 +29,8 @@ const roomTasks = computed(() =>
 )
 
 const linesSource = computed(() =>
-  user.value
-    ? budgetLinesCol(db, user.value.uid, props.room.projectId, props.room.id)
+  projectStore.activeOwnerUid
+    ? budgetLinesCol(db, projectStore.activeOwnerUid, props.room.projectId, props.room.id)
     : null,
 )
 const budgetLines = useCollection(linesSource, { ssrKey: 'panel-budget' })
@@ -53,6 +53,27 @@ async function saveName() {
   editingName.value = false
   const name = nameDraft.value.trim()
   if (name && name !== props.room.name) await roomsStore.updateRoom(props.room.id, { name })
+}
+
+const editingDims = ref(false)
+const wDraft = ref('')
+const hDraft = ref('')
+
+function startDimsEdit() {
+  wDraft.value = inchesToFeetInput(props.room.geometry.w)
+  hDraft.value = inchesToFeetInput(props.room.geometry.h)
+  editingDims.value = true
+}
+
+async function saveDims() {
+  editingDims.value = false
+  const w = parseFeetToInches(wDraft.value, DEFAULT_GRID_STEP, WORLD.w)
+  const h = parseFeetToInches(hDraft.value, DEFAULT_GRID_STEP, WORLD.h)
+  if (w !== null && h !== null && (w !== props.room.geometry.w || h !== props.room.geometry.h)) {
+    await roomsStore.updateRoom(props.room.id, {
+      geometry: { ...props.room.geometry, w, h },
+    })
+  }
 }
 
 const statusItems: { value: RoomStatus, title: string }[] = [
@@ -87,13 +108,90 @@ const statusItems: { value: RoomStatus, title: string }[] = [
         @keyup.enter="saveName"
         @blur="saveName"
       />
-      <v-card-subtitle>{{ sqFt(room.geometry) }} sq ft · floor {{ room.floor }}</v-card-subtitle>
+      <v-card-subtitle>
+        <template v-if="!editingDims">
+          <button
+            class="dims-btn"
+            type="button"
+            :title="'Edit dimensions (in feet)'"
+            @click="startDimsEdit"
+          >{{ dimsLabel(room.geometry) }}</button>
+          · {{ sqFt(room.geometry) }} sq ft · floor {{ room.floor }}
+        </template>
+        <div v-else class="d-flex align-center ga-1 mt-1">
+          <v-text-field
+            v-model="wDraft"
+            density="compact"
+            variant="outlined"
+            hide-details
+            label="W (ft)"
+            type="number"
+            min="1"
+            step="0.5"
+            style="max-width: 90px"
+            autofocus
+            @keyup.enter="saveDims"
+            @blur="saveDims"
+          />
+          <span class="text-body-2">×</span>
+          <v-text-field
+            v-model="hDraft"
+            density="compact"
+            variant="outlined"
+            hide-details
+            label="H (ft)"
+            type="number"
+            min="1"
+            step="0.5"
+            style="max-width: 90px"
+            @keyup.enter="saveDims"
+            @blur="saveDims"
+          />
+          <span class="text-body-2 text-medium-emphasis ml-1">ft</span>
+        </div>
+      </v-card-subtitle>
       <template #append>
+        <v-btn
+          icon="mdi-arrow-expand"
+          size="small"
+          variant="text"
+          aria-label="Open room page"
+          :to="`/rooms/${room.id}`"
+        />
         <v-btn icon="mdi-close" size="small" variant="text" aria-label="Close panel" @click="emit('close')" />
       </template>
     </v-card-item>
 
     <v-card-text class="pt-0">
+      <!-- Notches -->
+      <div v-if="room.geometry.notches.length > 0 || true" class="mb-3">
+        <div class="d-flex align-center justify-space-between mb-1">
+          <span class="text-body-2">Notches</span>
+          <v-btn
+            size="x-small"
+            variant="tonal"
+            prepend-icon="mdi-scissors-cutting"
+            class="text-none"
+            @click="emit('activateNotchTool')"
+          >Add notch</v-btn>
+        </div>
+        <v-chip-group v-if="room.geometry.notches.length > 0">
+          <v-chip
+            v-for="n in room.geometry.notches"
+            :key="n.id"
+            size="small"
+            variant="tonal"
+            closable
+            @click:close="emit('deleteNotch', room.id, n.id)"
+          >
+            {{ dimsLabel({ x: 0, y: 0, w: n.w, h: n.h, rotation: 0, notches: [] }) }}
+          </v-chip>
+        </v-chip-group>
+        <p v-else class="text-body-2 text-medium-emphasis ma-0">
+          No notches. Use the Notch tool or the button above to cut into this room.
+        </p>
+      </div>
+
       <div class="d-flex ga-2 mb-4">
         <v-select
           :model-value="room.type"
@@ -242,5 +340,18 @@ const statusItems: { value: RoomStatus, title: string }[] = [
 <style scoped>
 .room-panel {
   width: 100%;
+}
+.dims-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+.dims-btn:hover {
+  opacity: 0.75;
 }
 </style>

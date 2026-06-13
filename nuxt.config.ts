@@ -7,6 +7,13 @@
 // path that lets a dev session reach prod — the config is baked from the env
 // active at build time.
 
+import { fileURLToPath } from 'node:url'
+// Build-time markdown-it parse of content/research/*.md → virtual module
+// (Build Conventions: no @nuxt/content for two files).
+import { researchContentPlugin } from './build/research-content'
+
+const rootDir = fileURLToPath(new URL('.', import.meta.url))
+
 const firebaseConfig = {
   apiKey: process.env.NUXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NUXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -142,6 +149,13 @@ export default defineNuxtConfig({
     public: {
       firebase: firebaseConfig,
       recaptchaEnterpriseKey: recaptchaKey ?? '',
+    },
+  },
+
+  vite: {
+    plugins: [researchContentPlugin(rootDir)],
+    optimizeDeps: {
+      include: ['vuefire', 'zod', 'firebase/firestore', 'firebase/auth'],
     },
   },
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Geometry, Room, RoomType } from '~/models'
+import type { Geometry, Notch, Room, RoomType } from '~/models'
 import type { FloorplanTool } from '~/composables/useFloorplan'
 import FloorplanCanvas from '~/components/floorplan/FloorplanCanvas.vue'
 import { DEFAULT_GRID_STEP } from '~/utils/geometry'
@@ -36,6 +36,8 @@ const selectedRoom = computed(
 )
 
 watch(floor, () => (selectedId.value = null))
+// Exit notch mode when the selection is cleared
+watch(selectedId, (id) => { if (!id && tool.value === 'notch') tool.value = 'select' })
 watch(() => projectStore.currentProjectId, () => {
   selectedId.value = null
   floor.value = 1
@@ -90,6 +92,23 @@ async function confirmDelete() {
 // --- geometry writes ---
 function onCommit(id: string, geometry: Geometry) {
   roomsStore.updateRoom(id, { geometry })
+}
+
+function onAddNotch(roomId: string, notch: Omit<Notch, 'id'>) {
+  const room = roomsStore.roomById[roomId]
+  if (!room) return
+  const newNotch: Notch = { id: crypto.randomUUID(), ...notch }
+  roomsStore.updateRoom(roomId, {
+    geometry: { ...room.geometry, notches: [...room.geometry.notches, newNotch] },
+  })
+}
+
+function onDeleteNotch(roomId: string, notchId: string) {
+  const room = roomsStore.roomById[roomId]
+  if (!room) return
+  roomsStore.updateRoom(roomId, {
+    geometry: { ...room.geometry, notches: room.geometry.notches.filter(n => n.id !== notchId) },
+  })
 }
 
 // Delegated to the canvas so the rotation includes any in-flight nudge overlay.
@@ -150,6 +169,7 @@ const projectCreateOpen = ref(false)
       v-model:floor="floor"
       :floors="floors"
       :export-disabled="floorRooms.length === 0"
+      :has-selection="!!selectedId"
       @add-floor="addFloor"
       @export="onExport"
     />
@@ -165,6 +185,7 @@ const projectCreateOpen = ref(false)
           @create="onCreate"
           @commit="onCommit"
           @delete-request="onDeleteRequest"
+          @add-notch="onAddNotch"
         />
       </div>
       <div v-if="selectedRoom && mdAndUp" class="fp-panel-col">
@@ -173,6 +194,8 @@ const projectCreateOpen = ref(false)
           @close="selectedId = null"
           @delete-request="onDeleteRequest"
           @rotate="onRotate"
+          @activate-notch-tool="tool = 'notch'"
+          @delete-notch="onDeleteNotch"
         />
       </div>
     </div>
@@ -189,6 +212,8 @@ const projectCreateOpen = ref(false)
         @close="selectedId = null"
         @delete-request="onDeleteRequest"
         @rotate="onRotate"
+        @activate-notch-tool="tool = 'notch'"
+        @delete-notch="onDeleteNotch"
       />
     </v-bottom-sheet>
 

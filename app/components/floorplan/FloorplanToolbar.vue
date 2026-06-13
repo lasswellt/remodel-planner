@@ -7,6 +7,7 @@ import { GRID_STEPS } from '~/utils/geometry'
 defineProps<{
   floors: number[]
   exportDisabled: boolean
+  hasSelection: boolean
 }>()
 
 const emit = defineEmits<{
@@ -32,6 +33,15 @@ const gridItems = GRID_STEPS.map(step => ({
       </v-btn>
       <v-btn value="draw" prepend-icon="mdi-shape-rectangle-plus" size="small" aria-label="Draw a new room">
         Draw room
+      </v-btn>
+      <v-btn
+        value="notch"
+        prepend-icon="mdi-scissors-cutting"
+        size="small"
+        :disabled="!hasSelection"
+        aria-label="Cut a notch into the selected room"
+      >
+        Notch
       </v-btn>
     </v-btn-toggle>
 

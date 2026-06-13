@@ -8,11 +8,13 @@ import {
   BudgetLine,
   ChecklistItem,
   InspirationItem,
+  Member,
   Permit,
   Photo,
   Project,
   Room,
   Selection,
+  SharedProjectRef,
   Task,
 } from '~/models'
 import { zodConverter } from '~/utils/converters'
@@ -69,3 +71,20 @@ export const selectionsGroup = (db: Firestore) =>
 
 export const checklistGroup = (db: Firestore) =>
   collectionGroup(db, 'checklist').withConverter(zodConverter(ChecklistItem))
+
+// Sharing: members subcollection, invites root, shared-project pointers
+export const membersCol = (db: Firestore, ownerUid: string, projectId: string) =>
+  collection(db, 'users', ownerUid, 'projects', projectId, 'members').withConverter(zodConverter(Member))
+
+export const memberDoc = (db: Firestore, ownerUid: string, projectId: string, memberUid: string) =>
+  doc(db, 'users', ownerUid, 'projects', projectId, 'members', memberUid).withConverter(zodConverter(Member))
+
+// Invite is read raw — no zodConverter (it has no id field in the stored doc).
+export const inviteDoc = (db: Firestore, token: string) =>
+  doc(db, 'invites', token)
+
+export const sharedProjectsCol = (db: Firestore, uid: string) =>
+  collection(db, 'users', uid, 'sharedProjects').withConverter(zodConverter(SharedProjectRef))
+
+export const sharedProjectDoc = (db: Firestore, uid: string, projectId: string) =>
+  doc(db, 'users', uid, 'sharedProjects', projectId).withConverter(zodConverter(SharedProjectRef))

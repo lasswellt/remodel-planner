@@ -26,7 +26,7 @@ export function seededBundle(): ProjectBundle {
         name: 'Kitchen',
         type: 'kitchen',
         floor: 1,
-        geometry: { x: 0, y: 0, w: 200, h: 150, rotation: 0 },
+        geometry: { x: 0, y: 0, w: 200, h: 150, rotation: 0, notches: [] },
         status: 'in-progress',
       },
     ],

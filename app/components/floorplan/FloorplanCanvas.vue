@@ -16,6 +16,7 @@ const emit = defineEmits<{
   create: [geometry: Geometry]
   commit: [id: string, geometry: Geometry]
   deleteRequest: [id: string]
+  addNotch: [roomId: string, notch: { x: number, y: number, w: number, h: number }]
 }>()
 
 const selectedId = defineModel<string | null>('selected', { default: null })
@@ -33,6 +34,7 @@ const fp = useFloorplan({
   onCreate: geo => emit('create', geo),
   onCommit: (id, geo) => emit('commit', id, geo),
   onDeleteRequest: id => emit('deleteRequest', id),
+  onAddNotch: (roomId, notch) => emit('addNotch', roomId, notch),
 })
 
 // Keyboard works while the plan is on screen: arrows nudge, R rotates, Del
@@ -64,7 +66,7 @@ const ghost = computed(() => props.rooms.length === 0)
   <svg
     ref="svgEl"
     class="fp-canvas"
-    :class="{ 'fp-canvas--draw': tool === 'draw' }"
+    :class="{ 'fp-canvas--draw': tool === 'draw', 'fp-canvas--notch': tool === 'notch' }"
     :viewBox="`0 0 ${WORLD.w} ${WORLD.h}`"
     role="application"
     aria-label="Floorplan canvas. Use the draw tool to add rooms; arrow keys nudge the selected room."
@@ -108,6 +110,20 @@ const ghost = computed(() => props.rooms.length === 0)
       stroke="#1565C0"
       stroke-width="2"
       stroke-dasharray="6 4"
+    />
+
+    <!-- Notch preview -->
+    <rect
+      v-if="fp.notchDraft.value"
+      :x="fp.notchDraft.value.x"
+      :y="fp.notchDraft.value.y"
+      :width="fp.notchDraft.value.w"
+      :height="fp.notchDraft.value.h"
+      fill="#B71C1C"
+      fill-opacity="0.15"
+      stroke="#B71C1C"
+      stroke-width="2"
+      stroke-dasharray="4 3"
     />
 
     <!-- Resize handles for the selected room -->
@@ -168,7 +184,9 @@ const ghost = computed(() => props.rooms.length === 0)
   background: #fff;
 }
 .fp-canvas--draw,
-.fp-canvas--draw :deep(.fp-room) {
+.fp-canvas--draw :deep(.fp-room),
+.fp-canvas--notch,
+.fp-canvas--notch :deep(.fp-room) {
   cursor: crosshair;
 }
 .fp-ghost {

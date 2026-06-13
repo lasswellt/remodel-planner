@@ -1,5 +1,5 @@
 import type { Ref } from 'vue'
-import type { Geometry, Room } from '~/models'
+import type { Geometry, Notch, Room } from '~/models'
 import {
   clampToWorld,
   MIN_ROOM_SIZE,
@@ -10,7 +10,7 @@ import {
   sameRect,
 } from '~/utils/geometry'
 
-export type FloorplanTool = 'select' | 'draw'
+export type FloorplanTool = 'select' | 'draw' | 'notch'
 export type HandleId = 'nw' | 'ne' | 'sw' | 'se'
 
 interface Point { x: number, y: number }
@@ -18,6 +18,7 @@ interface Point { x: number, y: number }
 type Mode
   = | { kind: 'idle' }
     | { kind: 'drawing', anchor: Point }
+    | { kind: 'notching', anchor: Point, roomId: string }
     | { kind: 'moving', id: string, start: Point, orig: Geometry }
     | { kind: 'resizing', id: string, anchor: Point, orig: Geometry }
 
@@ -30,23 +31,22 @@ export interface UseFloorplanOptions {
   onCreate: (geo: Geometry) => void
   onCommit: (id: string, geo: Geometry) => void
   onDeleteRequest: (id: string) => void
+  onAddNotch: (roomId: string, notch: Omit<Notch, 'id'>) => void
 }
 
 // Pointer/keyboard state machine for the floorplan canvas: draw, drag, resize,
-// nudge, rotate. Persistence stays outside (onCreate/onCommit callbacks); while
-// a gesture is in flight the live geometry is a local overlay, and exactly one
-// write happens on gesture end — never one per pointermove.
+// nudge, rotate, notch. Persistence stays outside (callbacks); while a gesture
+// is in flight the live geometry is a local overlay — exactly one write on end.
 export function useFloorplan(opts: UseFloorplanOptions) {
   const mode = ref<Mode>({ kind: 'idle' })
   const draftRect = ref<Geometry | null>(null)
+  const notchDraft = ref<Geometry | null>(null)
   const overlay = ref<{ id: string, geo: Geometry } | null>(null)
 
   const selectedRoom = computed(
     () => opts.rooms.value.find(r => r.id === opts.selectedId.value) ?? null,
   )
 
-  // Keep the overlay until the store reflects the committed geometry so the
-  // rect never flashes back to its pre-gesture position.
   watch(opts.rooms, (rooms) => {
     if (!overlay.value) return
     const room = rooms.find(r => r.id === overlay.value!.id)
@@ -65,19 +65,12 @@ export function useFloorplan(opts: UseFloorplanOptions) {
     return { x: p.x, y: p.y }
   }
 
-  // Capture/release throw NotFoundError for pointers that no longer exist
-  // (device removed mid-gesture, pointercancel paths) — never let that abort
-  // the gesture bookkeeping around it.
   function capturePointer(e: PointerEvent): void {
-    try {
-      opts.svgEl.value?.setPointerCapture(e.pointerId)
-    }
+    try { opts.svgEl.value?.setPointerCapture(e.pointerId) }
     catch { /* gesture proceeds uncaptured */ }
   }
   function releasePointer(e: PointerEvent): void {
-    try {
-      opts.svgEl.value?.releasePointerCapture(e.pointerId)
-    }
+    try { opts.svgEl.value?.releasePointerCapture(e.pointerId) }
     catch { /* already released */ }
   }
 
@@ -87,11 +80,6 @@ export function useFloorplan(opts: UseFloorplanOptions) {
     else overlay.value = null
   }
 
-  // Arrow-key nudges buffer into pendingNudge and commit once, debounced, so
-  // holding a key produces one write. The pair is captured at schedule time —
-  // never re-resolved through rooms — so a floor/project switch inside the
-  // debounce window cannot drop the write, and any gesture or rotate flushes
-  // it synchronously first.
   let pendingNudge: { id: string, geo: Geometry, base: Geometry } | null = null
 
   function commitPendingNudge(): void {
@@ -102,15 +90,12 @@ export function useFloorplan(opts: UseFloorplanOptions) {
   const scheduleNudgeCommit = useDebounceFn(commitPendingNudge, 400)
 
   function anchorFor(handle: HandleId, g: Geometry): Point {
-    // The anchor is the corner opposite the grabbed handle.
     return {
       x: handle === 'nw' || handle === 'sw' ? g.x + g.w : g.x,
       y: handle === 'nw' || handle === 'ne' ? g.y + g.h : g.y,
     }
   }
 
-  // Single-gesture invariant: the first pointer wins; a second concurrent
-  // pointer (other finger, other button) cannot hijack an in-flight gesture.
   let activePointerId: number | null = null
 
   function onPointerDown(e: PointerEvent): void {
@@ -122,6 +107,9 @@ export function useFloorplan(opts: UseFloorplanOptions) {
 
     if (opts.tool.value === 'draw') {
       mode.value = { kind: 'drawing', anchor: pt }
+    }
+    else if (opts.tool.value === 'notch' && opts.selectedId.value) {
+      mode.value = { kind: 'notching', anchor: pt, roomId: opts.selectedId.value }
     }
     else {
       const handle = target.closest('[data-handle]')?.getAttribute('data-handle') as HandleId | null
@@ -156,9 +144,12 @@ export function useFloorplan(opts: UseFloorplanOptions) {
     const step = opts.gridStep.value
 
     if (m.kind === 'drawing') {
-      // Ignore sub-step jitter so a stray click can't spawn a min-size room.
       const dragged = Math.max(Math.abs(pt.x - m.anchor.x), Math.abs(pt.y - m.anchor.y)) >= step
       draftRect.value = dragged ? rectFromCorners(m.anchor, pt, step) : null
+    }
+    else if (m.kind === 'notching') {
+      const dragged = Math.max(Math.abs(pt.x - m.anchor.x), Math.abs(pt.y - m.anchor.y)) >= step
+      notchDraft.value = dragged ? rectFromCorners(m.anchor, pt, step) : null
     }
     else if (m.kind === 'moving') {
       overlay.value = {
@@ -176,10 +167,27 @@ export function useFloorplan(opts: UseFloorplanOptions) {
     activePointerId = null
     const m = mode.value
     releasePointer(e)
+
     if (m.kind === 'drawing') {
       const draft = draftRect.value
       draftRect.value = null
       if (draft && draft.w >= MIN_ROOM_SIZE && draft.h >= MIN_ROOM_SIZE) opts.onCreate(draft)
+    }
+    else if (m.kind === 'notching') {
+      const draft = notchDraft.value
+      notchDraft.value = null
+      const room = opts.rooms.value.find(r => r.id === m.roomId)
+      if (draft && room && draft.w >= MIN_ROOM_SIZE && draft.h >= MIN_ROOM_SIZE) {
+        // Convert world coords to coords relative to room origin
+        const geo = liveGeometry(room)
+        opts.onAddNotch(m.roomId, {
+          x: draft.x - geo.x,
+          y: draft.y - geo.y,
+          w: draft.w,
+          h: draft.h,
+        })
+      }
+      // Stay in notch mode so the user can draw multiple notches in sequence
     }
     else if (m.kind === 'moving' || m.kind === 'resizing') {
       commitOverlay(m.orig)
@@ -190,8 +198,6 @@ export function useFloorplan(opts: UseFloorplanOptions) {
   function rotateSelected(): void {
     const room = selectedRoom.value
     if (!room) return
-    // The rotation is computed from liveGeometry, which already includes any
-    // pending nudge — drop the buffered nudge so it cannot overwrite this.
     const next = rotate90(liveGeometry(room), opts.gridStep.value)
     pendingNudge = null
     if (sameRect(next, room.geometry)) return
@@ -213,15 +219,10 @@ export function useFloorplan(opts: UseFloorplanOptions) {
   }
 
   function onKeydown(e: KeyboardEvent): void {
-    // Browser/OS shortcuts (Ctrl+R reload, Cmd+arrows…) are not ours.
     if (e.ctrlKey || e.metaKey || e.altKey) return
-    // Focus on any interactive control (toolbar buttons, tabs, selects,
-    // fields) keeps its native keyboard behavior. e.target can be window/
-    // document for synthetic dispatches — only Elements have closest().
     const t = e.target
     if (t instanceof Element
       && t.closest('input, textarea, select, button, [role="tab"], [contenteditable]')) return
-    // A Vuetify dialog/menu is open — its own keyboard handling wins.
     if (document.querySelector('.v-overlay--active')) return
 
     switch (e.key) {
@@ -236,9 +237,11 @@ export function useFloorplan(opts: UseFloorplanOptions) {
         if (opts.selectedId.value) opts.onDeleteRequest(opts.selectedId.value)
         break
       case 'Escape':
-        if (mode.value.kind === 'drawing') {
+        if (mode.value.kind === 'drawing' || mode.value.kind === 'notching') {
           draftRect.value = null
+          notchDraft.value = null
           mode.value = { kind: 'idle' }
+          if (opts.tool.value !== 'select') opts.tool.value = 'select'
         }
         else {
           opts.selectedId.value = null
@@ -247,14 +250,13 @@ export function useFloorplan(opts: UseFloorplanOptions) {
     }
   }
 
-  // Geometry edits from outside a gesture (summary-panel rotate) reuse the
-  // same clamp; exported for the page to keep all writes snapped + in-world.
   function sanitize(geo: Geometry): Geometry {
     return clampToWorld(geo)
   }
 
   return {
     draftRect,
+    notchDraft,
     overlay,
     selectedRoom,
     liveGeometry,

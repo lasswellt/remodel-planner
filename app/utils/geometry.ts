@@ -44,6 +44,7 @@ export function rectFromCorners(
     w: Math.max(min, x1 - x0),
     h: Math.max(min, y1 - y0),
     rotation,
+    notches: [],
   })
 }
 
@@ -65,6 +66,7 @@ export function rotate90(geo: Geometry, step: number): Geometry {
   const cx = geo.x + geo.w / 2
   const cy = geo.y + geo.h / 2
   return clampToWorld({
+    ...geo,
     x: snapTo(cx - geo.h / 2, step),
     y: snapTo(cy - geo.w / 2, step),
     w: geo.h,
@@ -77,7 +79,52 @@ export function sqFt(geo: Geometry): number {
   return Math.round((geo.w * geo.h) / 144)
 }
 
+function inchesToFeetLabel(inches: number): string {
+  const ft = Math.floor(inches / 12)
+  const in_ = inches % 12
+  return in_ === 0 ? `${ft}'` : `${ft}'${in_}"`
+}
+
+// e.g. 150" × 120" → "12'6\" × 10'"
+export function dimsLabel(geo: Geometry): string {
+  return `${inchesToFeetLabel(geo.w)} × ${inchesToFeetLabel(geo.h)}`
+}
+
+// Inches → decimal feet string for an input field (e.g. 150 → "12.5")
+export function inchesToFeetInput(inches: number): string {
+  const ft = inches / 12
+  return Number.isInteger(ft) ? String(ft) : ft.toFixed(2).replace(/\.?0+$/, '')
+}
+
+// Parse a feet input (decimal or integer) → inches, snapped to step, clamped.
+// Accepts "12", "10.5", "12.5" etc. Returns null for invalid input.
+export function parseFeetToInches(
+  value: string,
+  step: number,
+  max: number,
+): number | null {
+  const ft = parseFloat(value)
+  if (!Number.isFinite(ft) || ft <= 0) return null
+  const raw = ft * 12
+  const snapped = Math.round(raw / step) * step
+  return Math.min(Math.max(MIN_ROOM_SIZE, snapped), max)
+}
+
 export function sameRect(a: Geometry, b: Geometry): boolean {
   return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h
     && a.rotation === b.rotation
+}
+
+// SVG path for a room with rectangular notch cutouts.
+// fill-rule="evenodd" turns the inner rects into transparent holes.
+// Notch coords are relative to the room's (x, y) origin.
+export function buildRoomPath(geo: Geometry): string {
+  const { x, y, w, h } = geo
+  let d = `M ${x} ${y} H ${x + w} V ${y + h} H ${x} Z`
+  for (const n of geo.notches) {
+    const nx = x + n.x
+    const ny = y + n.y
+    d += ` M ${nx} ${ny} H ${nx + n.w} V ${ny + n.h} H ${nx} Z`
+  }
+  return d
 }

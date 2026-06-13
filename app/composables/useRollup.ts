@@ -1,5 +1,5 @@
 import { query, where } from 'firebase/firestore'
-import { useCollection, useCurrentUser, useFirestore } from 'vuefire'
+import { useCollection, useFirestore } from 'vuefire'
 import type { Task } from '~/models'
 import { checklistGroup, tasksGroup } from '~/utils/firestore-paths'
 import type { Progress } from '~/utils/rollup'
@@ -18,13 +18,12 @@ import { useProjectStore } from '~/stores/project'
 // task board all read the same two listeners and the same math.
 export const useRollup = createSharedComposable(() => {
   const db = useFirestore()
-  const user = useCurrentUser()
   const projectStore = useProjectStore()
 
   const scope = computed(() =>
-    user.value && projectStore.currentProjectId
+    projectStore.activeOwnerUid && projectStore.currentProjectId
       ? {
-          uid: where('uid', '==', user.value.uid),
+          uid: where('uid', '==', projectStore.activeOwnerUid),
           project: where('projectId', '==', projectStore.currentProjectId),
         }
       : null,

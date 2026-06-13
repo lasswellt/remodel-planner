@@ -108,5 +108,8 @@ function toggleTheme() {
         <slot />
       </v-container>
     </v-main>
+
+    <!-- UX8: shared undo surface for low-stakes deletions. -->
+    <AppUndoSnackbar />
   </v-app>
 </template>

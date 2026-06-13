@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import type { UpdateData } from 'firebase/firestore'
 import { doc, setDoc, updateDoc } from 'firebase/firestore'
-import { useCollection, useCurrentUser, useFirestore } from 'vuefire'
+import { useCollection, useFirestore } from 'vuefire'
 import type { Geometry, Room, RoomStatus, RoomType } from '~/models'
 import { deleteRoomDeep } from '~/utils/firestore-cascade'
 import { roomsCol } from '~/utils/firestore-paths'
@@ -23,18 +23,14 @@ export type RoomPatch = Partial<{
   geometry: Geometry
 }>
 
-// Domain store for the current project's rooms, backed by a VueFire reactive
-// binding that rebinds whenever the selected project changes. Writes are
-// optimistic and tracked for the UX9 sync indicator.
 export const useRoomsStore = defineStore('rooms', () => {
   const db = useFirestore()
-  const user = useCurrentUser()
   const projectStore = useProjectStore()
   const sync = useSyncStore()
 
   const source = computed(() =>
-    user.value && projectStore.currentProjectId
-      ? roomsCol(db, user.value.uid, projectStore.currentProjectId)
+    projectStore.activeOwnerUid && projectStore.currentProjectId
+      ? roomsCol(db, projectStore.activeOwnerUid, projectStore.currentProjectId)
       : null,
   )
   const rooms = useCollection(source, { ssrKey: 'rooms' })
@@ -44,14 +40,12 @@ export const useRoomsStore = defineStore('rooms', () => {
   )
 
   function scope() {
-    if (!user.value || !projectStore.currentProjectId) {
-      throw new Error('rooms store: no signed-in user or selected project')
+    if (!projectStore.activeOwnerUid || !projectStore.currentProjectId) {
+      throw new Error('rooms store: no active project')
     }
-    return { uid: user.value.uid, projectId: projectStore.currentProjectId }
+    return { uid: projectStore.activeOwnerUid, projectId: projectStore.currentProjectId }
   }
 
-  // Optimistic (UX9): the room appears immediately from the local cache; the
-  // sync indicator tracks the server round-trip.
   function createRoom(input: RoomCreate): string {
     const { uid, projectId } = scope()
     const col = roomsCol(db, uid, projectId)
@@ -67,8 +61,6 @@ export const useRoomsStore = defineStore('rooms', () => {
     await sync.track(() => updateDoc(ref, patch as UpdateData<Room>))
   }
 
-  // Cascades through the room's subcollections (no Cloud Functions — the
-  // client owns deletes). High-stakes: callers confirm first (UX8).
   async function removeRoom(id: string): Promise<void> {
     const { uid, projectId } = scope()
     const ref = doc(roomsCol(db, uid, projectId), id)

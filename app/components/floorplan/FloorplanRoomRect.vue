@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Geometry, Room } from '~/models'
-import { sqFt } from '~/utils/geometry'
+import { buildRoomPath, dimsLabel, sqFt } from '~/utils/geometry'
 import { RING_ARC, RING_DONE, RING_TRACK, STATUS_STYLES } from '~/utils/floorplan-style'
 import type { Progress } from '~/utils/rollup'
 import { effectiveRoomStatus } from '~/utils/rollup'
@@ -32,6 +32,8 @@ const label = computed(
   () => (status.value === 'done' ? '✓ ' : '') + props.room.name,
 )
 
+const roomPath = computed(() => buildRoomPath(props.geometry))
+
 // UX3: celebrate the moment progress crosses to 100% — not on initial load of
 // an already-done room.
 const celebrating = ref(false)
@@ -50,20 +52,18 @@ watch(
   <g
     :data-room-id="room.id"
     class="fp-room"
-    :aria-label="`${room.name}, ${sqFt(geometry)} sq ft, ${progress.pct}% complete`"
+    :aria-label="`${room.name}, ${dimsLabel(geometry)}, ${sqFt(geometry)} sq ft, ${progress.pct}% complete`"
   >
-    <rect
+    <path
       class="fp-room__rect"
       :class="{ 'fp-room__rect--celebrate': celebrating }"
-      :x="geometry.x"
-      :y="geometry.y"
-      :width="geometry.w"
-      :height="geometry.h"
-      rx="3"
+      :d="roomPath"
+      fill-rule="evenodd"
       :fill="style.fill"
       :stroke="style.stroke"
       :stroke-width="selected ? 4 : 2.5"
       :stroke-dasharray="style.dash"
+      stroke-linejoin="round"
     />
     <template v-if="showLabel">
       <text
@@ -80,7 +80,7 @@ watch(
         :y="geometry.y + geometry.h / 2 + 14"
         text-anchor="middle"
         font-size="11"
-      >{{ sqFt(geometry) }} sq ft</text>
+      >{{ dimsLabel(geometry) }}</text>
     </template>
     <!-- Too small for a label: a done room still gets its non-color channel. -->
     <text
