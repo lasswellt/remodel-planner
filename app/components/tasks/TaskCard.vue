@@ -9,6 +9,7 @@ import { useProjectTasks } from '~/composables/useTasks'
 const props = defineProps<{ task: Task, roomName?: string }>()
 const emit = defineEmits<{
   requestMove: [TaskStatus]
+  edit: []
   remove: []
   dragstart: []
   dragend: []
@@ -43,6 +44,8 @@ const moveTargets: { status: TaskStatus, title: string }[] = [
             <v-btn icon="mdi-dots-vertical" size="x-small" variant="text" v-bind="menu" aria-label="Task actions" />
           </template>
           <v-list density="compact">
+            <v-list-item title="Edit…" prepend-icon="mdi-pencil-outline" @click="emit('edit')" />
+            <v-divider />
             <v-list-subheader>Move to</v-list-subheader>
             <v-list-item
               v-for="t in moveTargets"

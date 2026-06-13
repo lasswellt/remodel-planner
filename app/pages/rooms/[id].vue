@@ -197,6 +197,12 @@ function addItem() {
         </v-card-text>
       </v-card>
 
+      <!-- Selections (Phase 8): long-lead items that gate this room's tasks -->
+      <section class="mt-8">
+        <h2 class="text-h6 mb-2">Selections</h2>
+        <SelectionsSection :room="room" />
+      </section>
+
       <v-snackbar
         :model-value="!!appliedMessage"
         timeout="6000"

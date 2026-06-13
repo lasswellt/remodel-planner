@@ -20,6 +20,13 @@ const byColumn = (status: TaskStatus) =>
 const dragged = ref<Task | null>(null)
 const dragOverCol = ref<TaskStatus | null>(null)
 
+const editing = ref<Task | null>(null)
+const editOpen = ref(false)
+function openEdit(task: Task) {
+  editing.value = task
+  editOpen.value = true
+}
+
 const blockerDialog = ref(false)
 const pending = ref<{ task: Task, status: TaskStatus } | null>(null)
 const pendingBlockers = computed(() =>
@@ -74,6 +81,7 @@ function onDrop(status: TaskStatus) {
         @dragstart="dragged = task"
         @dragend="dragged = null"
         @request-move="(s) => move(task, s)"
+        @edit="openEdit(task)"
         @remove="ops.remove(task)"
       />
       <p v-if="byColumn(col.status).length === 0" class="text-caption text-medium-emphasis pa-2 ma-0">
@@ -100,6 +108,8 @@ function onDrop(status: TaskStatus) {
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <TasksTaskEditDialog v-if="editing" v-model="editOpen" :task="editing" />
   </div>
 </template>
 

@@ -1,10 +1,11 @@
-import { deleteDoc, doc, query, setDoc, updateDoc, where } from 'firebase/firestore'
+import { deleteDoc, doc, setDoc, updateDoc } from 'firebase/firestore'
 import type { UpdateData } from 'firebase/firestore'
 import { useCollection, useFirestore } from 'vuefire'
-import type { Permit, Selection, Task, TaskPhase, TaskStatus } from '~/models'
-import { permitsCol, selectionsGroup, tasksCol } from '~/utils/firestore-paths'
+import type { Permit, Task, TaskPhase, TaskStatus } from '~/models'
+import { permitsCol, tasksCol } from '~/utils/firestore-paths'
 import type { Blocker } from '~/utils/task-graph'
 import { taskBlockers } from '~/utils/task-graph'
+import { useProjectSelections } from '~/composables/useSelections'
 import { useProjectStore } from '~/stores/project'
 import { useSyncStore } from '~/stores/sync'
 import { useUndoStore } from '~/stores/undo'
@@ -16,17 +17,7 @@ export const useProjectTasks = createSharedComposable(() => {
   const db = useFirestore()
   const projectStore = useProjectStore()
   const rollup = useRollup()
-
-  const selectionsSource = computed(() =>
-    projectStore.activeOwnerUid && projectStore.currentProjectId
-      ? query(
-          selectionsGroup(db),
-          where('uid', '==', projectStore.activeOwnerUid),
-          where('projectId', '==', projectStore.currentProjectId),
-        )
-      : null,
-  )
-  const selections = useCollection<Selection>(selectionsSource, { ssrKey: 'task-selections' })
+  const { selections } = useProjectSelections()
 
   const permitsSource = computed(() =>
     projectStore.activeOwnerUid && projectStore.currentProjectId
@@ -70,6 +61,10 @@ export function useTaskOps() {
     void sync.track(() => updateDoc(refFor(task), { status } as UpdateData<Task>))
   }
 
+  function update(task: Task, patch: Partial<Task>): void {
+    void sync.track(() => updateDoc(refFor(task), patch as UpdateData<Task>))
+  }
+
   function remove(task: Task): void {
     void sync.track(() => deleteDoc(refFor(task)))
     undo.offer(`Deleted "${task.label}"`, () => sync.track(() => setDoc(refFor(task), task)))
@@ -94,5 +89,5 @@ export function useTaskOps() {
     void sync.track(() => setDoc(ref, task))
   }
 
-  return { setStatus, remove, add }
+  return { setStatus, update, remove, add }
 }

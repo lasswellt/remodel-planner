@@ -21,6 +21,11 @@ const db = useFirestore()
 const projectStore = useProjectStore()
 const roomsStore = useRoomsStore()
 const rollup = useRollup()
+const selections = useProjectSelections()
+
+const overdueSelections = computed(() =>
+  selections.byRoom(props.room.id).filter(s => selections.isSelectionOverdue(s)),
+)
 
 const progress = computed(() => rollup.byRoom(props.room.id))
 const nextTask = computed(() => rollup.nextTask(props.room.id))
@@ -256,6 +261,19 @@ const statusItems: { value: RoomStatus, title: string }[] = [
           No open tasks. Templates seed phase-ordered tasks in the rooms phase.
         </p>
       </div>
+
+      <!-- UX6: overdue selections are the salient warning on the panel. -->
+      <v-alert
+        v-if="overdueSelections.length > 0"
+        type="warning"
+        variant="tonal"
+        density="compact"
+        class="mb-2"
+        icon="mdi-truck-alert-outline"
+      >
+        {{ overdueSelections.length }} overdue selection{{ overdueSelections.length === 1 ? '' : 's' }}:
+        {{ overdueSelections.map(s => s.label).join(', ') }}
+      </v-alert>
 
       <v-expansion-panels variant="accordion" class="mt-4" multiple>
         <v-expansion-panel>
