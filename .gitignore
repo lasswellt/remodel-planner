@@ -43,3 +43,6 @@ serviceAccount*.json
 
 # Playwright MCP session artifacts
 .playwright-mcp
+
+# Local build/phase state (not for the repo)
+.remodel/
