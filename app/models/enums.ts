@@ -71,3 +71,30 @@ export type InspectionStatus = z.infer<typeof InspectionStatus>
 
 export const PhotoStage = z.enum(['before', 'during', 'after'])
 export type PhotoStage = z.infer<typeof PhotoStage>
+
+// Paint finish (sheen). Order runs flat → gloss.
+export const PaintFinish = z.enum([
+  'flat',
+  'matte',
+  'eggshell',
+  'satin',
+  'semi-gloss',
+  'gloss',
+])
+export type PaintFinish = z.infer<typeof PaintFinish>
+
+// Surface a paint color is applied to.
+export const PaintSurface = z.enum([
+  'walls',
+  'trim',
+  'ceiling',
+  'cabinets',
+  'doors',
+  'accent-wall',
+  'exterior',
+])
+export type PaintSurface = z.infer<typeof PaintSurface>
+
+// A purchase item moves from a loose idea → a committed buy → bought.
+export const PurchaseStatus = z.enum(['idea', 'to-buy', 'purchased'])
+export type PurchaseStatus = z.infer<typeof PurchaseStatus>

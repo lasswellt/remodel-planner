@@ -9,9 +9,11 @@ import {
   ChecklistItem,
   InspirationItem,
   Member,
+  Paint,
   Permit,
   Photo,
   Project,
+  PurchaseItem,
   Room,
   Selection,
   SharedProjectRef,
@@ -21,7 +23,7 @@ import { zodConverter } from '~/utils/converters'
 
 // Firestore layout (everything scoped under the authenticated user):
 //   users/{uid}/projects/{projectId}
-//     /rooms/{roomId}/{checklist,budgetLines,tasks,selections,photos}
+//     /rooms/{roomId}/{checklist,budgetLines,tasks,selections,photos,paints,purchases}
 //     /permits/{permitId}
 //     /inspiration/{itemId}
 //
@@ -53,6 +55,12 @@ export const selectionsCol = (db: Firestore, uid: string, projectId: string, roo
 
 export const photosCol = (db: Firestore, uid: string, projectId: string, roomId: string) =>
   sub(db, uid, projectId, 'rooms', roomId, 'photos').withConverter(zodConverter(Photo))
+
+export const paintsCol = (db: Firestore, uid: string, projectId: string, roomId: string) =>
+  sub(db, uid, projectId, 'rooms', roomId, 'paints').withConverter(zodConverter(Paint))
+
+export const purchasesCol = (db: Firestore, uid: string, projectId: string, roomId: string) =>
+  sub(db, uid, projectId, 'rooms', roomId, 'purchases').withConverter(zodConverter(PurchaseItem))
 
 export const permitsCol = (db: Firestore, uid: string, projectId: string) =>
   sub(db, uid, projectId, 'permits').withConverter(zodConverter(Permit))

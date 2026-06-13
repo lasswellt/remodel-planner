@@ -205,6 +205,18 @@ function addItem() {
         <SelectionsSection :room="room" />
       </section>
 
+      <!-- Paint colors: brand, code, finish, surface + swatch per surface -->
+      <section class="mt-8">
+        <h2 class="text-h6 mb-2">Paint colors</h2>
+        <PaintsSection :room="room" />
+      </section>
+
+      <!-- Shopping: things (or ideas) to buy, grouped + star-ranked -->
+      <section class="mt-8">
+        <h2 class="text-h6 mb-2">Shopping</h2>
+        <PurchasesSection :room="room" />
+      </section>
+
       <!-- Photos (Phase 10): owner-only, since Storage is owner-scoped -->
       <section class="mt-8">
         <h2 class="text-h6 mb-2">Photos</h2>

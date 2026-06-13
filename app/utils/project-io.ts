@@ -4,9 +4,11 @@ import {
   BudgetLine,
   ChecklistItem,
   InspirationItem,
+  Paint,
   Permit,
   Photo,
   Project,
+  PurchaseItem,
   Room,
   SCHEMA_VERSION,
   Selection,
@@ -23,6 +25,8 @@ export interface ProjectBundle {
   tasks: Task[]
   selections: Selection[]
   photos: Photo[]
+  paints: Paint[]
+  purchases: PurchaseItem[]
   permits: Permit[]
   inspiration: InspirationItem[]
 }
@@ -85,6 +89,8 @@ const BundleSchema = z.object({
   tasks: z.array(Task),
   selections: z.array(Selection),
   photos: z.array(Photo),
+  paints: z.array(Paint),
+  purchases: z.array(PurchaseItem),
   permits: z.array(Permit),
   inspiration: z.array(InspirationItem),
 })

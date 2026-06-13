@@ -69,6 +69,17 @@ service cloud.firestore {
       let d = request.resource.data;
       return d.title is string && d.url is string;
     }
+    function validPaint() {
+      let d = request.resource.data;
+      return d.name is string;
+    }
+    function validPurchase() {
+      let d = request.resource.data;
+      return d.title is string
+        && d.group is string
+        && isEnum(d.status, ['idea','to-buy','purchased'])
+        && d.rank is int && d.rank >= 0 && d.rank <= 5;
+    }
 
     // ---- invite tokens (top-level) ----
     // Any signed-in user can read an invite to accept it.
@@ -162,6 +173,16 @@ service cloud.firestore {
           match /photos/{photoId} {
             allow read: if isOwner(uid) || isMember(uid, projectId);
             allow create, update: if (isOwner(uid) || isMember(uid, projectId)) && ownsPayload(uid) && validPhoto();
+            allow delete: if isOwner(uid) || isMember(uid, projectId);
+          }
+          match /paints/{paintId} {
+            allow read: if isOwner(uid) || isMember(uid, projectId);
+            allow create, update: if (isOwner(uid) || isMember(uid, projectId)) && ownsPayload(uid) && validPaint();
+            allow delete: if isOwner(uid) || isMember(uid, projectId);
+          }
+          match /purchases/{purchaseId} {
+            allow read: if isOwner(uid) || isMember(uid, projectId);
+            allow create, update: if (isOwner(uid) || isMember(uid, projectId)) && ownsPayload(uid) && validPurchase();
             allow delete: if isOwner(uid) || isMember(uid, projectId);
           }
         }

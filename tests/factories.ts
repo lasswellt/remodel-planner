@@ -48,6 +48,12 @@ export function seededBundle(): ProjectBundle {
     photos: [
       { ...base, id: 'photo-1', roomId: 'room-kitchen', storagePath: 'users/owner-1/projects/proj-1/rooms/room-kitchen/photos/photo-1/original', thumbPath: 'users/owner-1/projects/proj-1/rooms/room-kitchen/photos/photo-1/thumb', stage: 'before', caption: 'Before demo', takenAt: TS(1_700_500_000) },
     ],
+    paints: [
+      { ...base, id: 'paint-1', roomId: 'room-kitchen', name: 'Sea Salt', brand: 'Sherwin-Williams', code: 'SW 6204', finish: 'satin', surface: 'walls', hex: '#cbd2c4', notes: 'North-facing test patch approved' },
+    ],
+    purchases: [
+      { ...base, id: 'buy-1', roomId: 'room-kitchen', title: 'Brushed gold pull-down faucet', group: 'Faucets', status: 'to-buy', rank: 4, vendor: 'Delta', url: 'https://example.com/faucet', imageUrl: 'https://example.com/faucet.jpg', priceCents: 28_900, notes: 'Matches cabinet hardware' },
+    ],
     permits: [
       {
         ...base,

@@ -4,9 +4,11 @@ import {
   budgetLinesCol,
   checklistCol,
   inspirationCol,
+  paintsCol,
   permitsCol,
   photosCol,
   projectDoc,
+  purchasesCol,
   roomsCol,
   selectionsCol,
   tasksCol,
@@ -56,6 +58,8 @@ export async function deleteRoomDeep(
     tasksCol(db, uid, projectId, roomId),
     selectionsCol(db, uid, projectId, roomId),
     photosCol(db, uid, projectId, roomId),
+    paintsCol(db, uid, projectId, roomId),
+    purchasesCol(db, uid, projectId, roomId),
   )
   await deleteRefs(db, [...refs, roomRef])
 }
