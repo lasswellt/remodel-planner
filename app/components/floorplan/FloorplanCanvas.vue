@@ -128,6 +128,30 @@ const ghost = computed(() => props.rooms.length === 0)
       stroke-dasharray="4 3"
     />
 
+    <!-- Snap guides: the edge lines the gesture is currently magnetized to -->
+    <line
+      v-if="fp.snapGuides.value.x !== null"
+      :x1="fp.snapGuides.value.x"
+      y1="0"
+      :x2="fp.snapGuides.value.x"
+      :y2="WORLD.h"
+      stroke="#E91E63"
+      stroke-width="1"
+      stroke-dasharray="5 4"
+      pointer-events="none"
+    />
+    <line
+      v-if="fp.snapGuides.value.y !== null"
+      x1="0"
+      :y1="fp.snapGuides.value.y"
+      :x2="WORLD.w"
+      :y2="fp.snapGuides.value.y"
+      stroke="#E91E63"
+      stroke-width="1"
+      stroke-dasharray="5 4"
+      pointer-events="none"
+    />
+
     <!-- Resize handles for the selected room -->
     <rect
       v-for="h in handles"

@@ -1,5 +1,5 @@
 import type { Geometry, Room, RoomStatus } from '~/models'
-import { sqFt, WORLD } from '~/utils/geometry'
+import { buildRoomPath, sqFt, WORLD } from '~/utils/geometry'
 import type { Progress } from '~/utils/rollup'
 import {
   FONT_STACK,
@@ -59,7 +59,7 @@ function roomSvg(room: Room, p: Progress, status: RoomStatus): string {
     const size = Math.min(13, g.h - 4, g.w - 4)
     label = `<text x="${cx}" y="${cy + 4}" text-anchor="middle" font-family='${FONT_STACK}' font-size="${size}" font-weight="600" fill="${LABEL_COLOR}">✓</text>`
   }
-  return `<g><rect x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}" rx="3" fill="${style.fill}" stroke="${style.stroke}" stroke-width="2.5"${dash}/>${label}${ringSvg(g, p)}</g>`
+  return `<g><path d="${buildRoomPath(g)}" fill-rule="evenodd" fill="${style.fill}" stroke="${style.stroke}" stroke-width="2.5" stroke-linejoin="round"${dash}/>${label}${ringSvg(g, p)}</g>`
 }
 
 export function buildFloorplanSvg(input: ExportInput): string {

@@ -1,16 +1,25 @@
 import { describe, expect, it } from 'vitest'
+import type { Geometry, Notch } from '../app/models'
 import {
   clampToWorld,
+  edgeSnapTargets,
   MIN_ROOM_SIZE,
   moveTo,
   nudge,
   rectFromCorners,
+  rectilinearRings,
   rotate90,
   sameRect,
+  snapScalar,
   snapTo,
   sqFt,
   WORLD,
 } from '../app/utils/geometry'
+
+const g = (x: number, y: number, w: number, h: number, notches: Omit<Notch, 'id'>[] = []): Geometry => ({
+  x, y, w, h, rotation: 0,
+  notches: notches.map((n, i) => ({ id: `n${i}`, ...n })),
+})
 
 describe('snapTo', () => {
   it('snaps to the nearest multiple of the step', () => {
@@ -120,6 +129,70 @@ describe('sqFt', () => {
     expect(sqFt({ x: 0, y: 0, w: 12, h: 12, rotation: 0 })).toBe(1)
     expect(sqFt({ x: 0, y: 0, w: 120, h: 144, rotation: 0 })).toBe(120)
     expect(sqFt({ x: 0, y: 0, w: 126, h: 126, rotation: 0 })).toBe(110) // rounds
+  })
+})
+
+describe('rectilinearRings + notch-aware sqFt', () => {
+  it('a plain rect is a single 4-point ring with full area', () => {
+    const rings = rectilinearRings(g(0, 0, 120, 120))
+    expect(rings).toHaveLength(1)
+    expect(rings[0]).toHaveLength(4)
+    expect(sqFt(g(0, 0, 120, 120))).toBe(100)
+  })
+
+  it('a corner notch yields a clean 6-point L outline and subtracts its area', () => {
+    // 120×120 room with a 60×60 cut out of the top-right corner.
+    const geo = g(0, 0, 120, 120, [{ x: 60, y: 0, w: 60, h: 60 }])
+    const rings = rectilinearRings(geo)
+    expect(rings).toHaveLength(1)
+    expect(rings[0]).toHaveLength(6)
+    expect(sqFt(geo)).toBe(75) // (120·120 − 60·60)/144
+  })
+
+  it('an edge notch yields a U outline (8 points)', () => {
+    const geo = g(0, 0, 120, 60, [{ x: 40, y: 0, w: 40, h: 30 }])
+    const rings = rectilinearRings(geo)
+    expect(rings).toHaveLength(1)
+    expect(rings[0]).toHaveLength(8)
+    expect(sqFt(geo)).toBe(42) // (7200 − 1200)/144 = 41.67 → 42
+  })
+
+  it('an interior notch yields a hole (two rings) and subtracts its area', () => {
+    const geo = g(0, 0, 120, 120, [{ x: 40, y: 40, w: 40, h: 40 }])
+    const rings = rectilinearRings(geo)
+    expect(rings).toHaveLength(2)
+    expect(sqFt(geo)).toBe(89) // (14400 − 1600)/144 = 88.9 → 89
+  })
+
+  it('clips notches that overrun the room and ignores fully-outside ones', () => {
+    const overrun = g(0, 0, 120, 120, [{ x: 90, y: 90, w: 999, h: 999 }]) // covers bottom-right 30×30
+    expect(sqFt(overrun)).toBe(94) // (14400 − 900)/144 = 93.75 → 94
+    const outside = g(0, 0, 120, 120, [{ x: 200, y: 200, w: 40, h: 40 }])
+    expect(sqFt(outside)).toBe(100)
+  })
+})
+
+describe('snapScalar', () => {
+  it('snaps to the nearest target within tolerance and reports the line', () => {
+    expect(snapScalar(102, [100, 200], 9)).toEqual({ value: 100, snapped: 100 })
+    expect(snapScalar(196, [100, 200], 9)).toEqual({ value: 200, snapped: 200 })
+  })
+  it('does not snap beyond tolerance', () => {
+    expect(snapScalar(115, [100, 200], 9)).toEqual({ value: 115, snapped: null })
+    expect(snapScalar(50, [], 9)).toEqual({ value: 50, snapped: null })
+  })
+})
+
+describe('edgeSnapTargets', () => {
+  it('collects other rooms’ outer + notch edge lines, excluding the dragged room', () => {
+    const rooms = [
+      { id: 'a', geometry: g(0, 0, 120, 60, [{ x: 100, y: 0, w: 20, h: 30 }]) },
+      { id: 'b', geometry: g(200, 200, 60, 60) },
+    ]
+    const t = edgeSnapTargets(rooms, 'b') // dragging b → snap to a only
+    expect(t.xs.sort((p, q) => p - q)).toEqual([0, 100, 120]) // 0, x+w=120, notch at 100/120
+    expect(t.ys.sort((p, q) => p - q)).toEqual([0, 30, 60]) // 0, 60, notch bottom 30
+    expect(edgeSnapTargets(rooms, 'b').xs).not.toContain(200) // b excluded
   })
 })
 

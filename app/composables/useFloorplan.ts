@@ -2,12 +2,15 @@ import type { Ref } from 'vue'
 import type { Geometry, Notch, Room } from '~/models'
 import {
   clampToWorld,
+  edgeSnapTargets,
   MIN_ROOM_SIZE,
   moveTo,
   nudge,
   rectFromCorners,
   rotate90,
   sameRect,
+  type SnapTargets,
+  snapScalar,
 } from '~/utils/geometry'
 
 export type FloorplanTool = 'select' | 'draw' | 'notch'
@@ -42,6 +45,9 @@ export function useFloorplan(opts: UseFloorplanOptions) {
   const draftRect = ref<Geometry | null>(null)
   const notchDraft = ref<Geometry | null>(null)
   const overlay = ref<{ id: string, geo: Geometry } | null>(null)
+  // The edge lines the in-flight gesture is currently magnetized to (rendered
+  // as guides). Cleared when the gesture ends.
+  const snapGuides = ref<{ x: number | null, y: number | null }>({ x: null, y: null })
 
   const selectedRoom = computed(
     () => opts.rooms.value.find(r => r.id === opts.selectedId.value) ?? null,
@@ -72,6 +78,41 @@ export function useFloorplan(opts: UseFloorplanOptions) {
   function releasePointer(e: PointerEvent): void {
     try { opts.svgEl.value?.releasePointerCapture(e.pointerId) }
     catch { /* already released */ }
+  }
+
+  // Magnetize a free point (draw/resize/notch corner) to nearby edge lines.
+  function snapPoint(pt: Point, targets: SnapTargets): Point {
+    const sx = snapScalar(pt.x, targets.xs)
+    const sy = snapScalar(pt.y, targets.ys)
+    snapGuides.value = { x: sx.snapped, y: sy.snapped }
+    return { x: sx.value, y: sy.value }
+  }
+
+  // Magnetize a translated room: snap whichever of its left/right (top/bottom)
+  // edges is closest to a target line, shifting the whole room so it tucks flush
+  // against another room — including into a notch corner.
+  function applyMoveSnap(geo: Geometry, excludeId: string): Geometry {
+    const t = edgeSnapTargets(opts.rooms.value, excludeId)
+    const left = snapScalar(geo.x, t.xs)
+    const right = snapScalar(geo.x + geo.w, t.xs)
+    const ld = left.snapped !== null ? Math.abs(left.value - geo.x) : Infinity
+    const rd = right.snapped !== null ? Math.abs(right.value - (geo.x + geo.w)) : Infinity
+    let dx = 0
+    let gx: number | null = null
+    if (left.snapped !== null && ld <= rd) { dx = left.value - geo.x; gx = left.snapped }
+    else if (right.snapped !== null) { dx = right.value - (geo.x + geo.w); gx = right.snapped }
+
+    const top = snapScalar(geo.y, t.ys)
+    const bottom = snapScalar(geo.y + geo.h, t.ys)
+    const td = top.snapped !== null ? Math.abs(top.value - geo.y) : Infinity
+    const bd = bottom.snapped !== null ? Math.abs(bottom.value - (geo.y + geo.h)) : Infinity
+    let dy = 0
+    let gy: number | null = null
+    if (top.snapped !== null && td <= bd) { dy = top.value - geo.y; gy = top.snapped }
+    else if (bottom.snapped !== null) { dy = bottom.value - (geo.y + geo.h); gy = bottom.snapped }
+
+    snapGuides.value = { x: gx, y: gy }
+    return clampToWorld({ ...geo, x: geo.x + dx, y: geo.y + dy })
   }
 
   function commitOverlay(orig: Geometry): void {
@@ -145,20 +186,39 @@ export function useFloorplan(opts: UseFloorplanOptions) {
 
     if (m.kind === 'drawing') {
       const dragged = Math.max(Math.abs(pt.x - m.anchor.x), Math.abs(pt.y - m.anchor.y)) >= step
-      draftRect.value = dragged ? rectFromCorners(m.anchor, pt, step) : null
+      if (dragged) {
+        // Snap the moving corner to any other room's edges so a new room can be
+        // drawn flush against / into the corner of an existing one.
+        const sp = snapPoint(pt, edgeSnapTargets(opts.rooms.value, null))
+        draftRect.value = rectFromCorners(m.anchor, sp, step)
+      }
+      else {
+        draftRect.value = null
+        snapGuides.value = { x: null, y: null }
+      }
     }
     else if (m.kind === 'notching') {
       const dragged = Math.max(Math.abs(pt.x - m.anchor.x), Math.abs(pt.y - m.anchor.y)) >= step
-      notchDraft.value = dragged ? rectFromCorners(m.anchor, pt, step) : null
-    }
-    else if (m.kind === 'moving') {
-      overlay.value = {
-        id: m.id,
-        geo: moveTo(m.orig, m.orig.x + (pt.x - m.start.x), m.orig.y + (pt.y - m.start.y), step),
+      const room = opts.rooms.value.find(r => r.id === m.roomId)
+      if (dragged && room) {
+        // Snap the notch corner to the room's own edges so the cut lands cleanly
+        // on a corner/edge (a clean L/T/U, not a floating interior hole).
+        const g = liveGeometry(room)
+        const sp = snapPoint(pt, { xs: [g.x, g.x + g.w], ys: [g.y, g.y + g.h] })
+        notchDraft.value = rectFromCorners(m.anchor, sp, step)
+      }
+      else {
+        notchDraft.value = null
+        snapGuides.value = { x: null, y: null }
       }
     }
+    else if (m.kind === 'moving') {
+      const moved = moveTo(m.orig, m.orig.x + (pt.x - m.start.x), m.orig.y + (pt.y - m.start.y), step)
+      overlay.value = { id: m.id, geo: applyMoveSnap(moved, m.id) }
+    }
     else if (m.kind === 'resizing') {
-      overlay.value = { id: m.id, geo: rectFromCorners(m.anchor, pt, step, m.orig.rotation) }
+      const sp = snapPoint(pt, edgeSnapTargets(opts.rooms.value, m.id))
+      overlay.value = { id: m.id, geo: rectFromCorners(m.anchor, sp, step, m.orig.rotation) }
     }
   }
 
@@ -193,6 +253,7 @@ export function useFloorplan(opts: UseFloorplanOptions) {
       commitOverlay(m.orig)
     }
     mode.value = { kind: 'idle' }
+    snapGuides.value = { x: null, y: null }
   }
 
   function rotateSelected(): void {
@@ -258,6 +319,7 @@ export function useFloorplan(opts: UseFloorplanOptions) {
     draftRect,
     notchDraft,
     overlay,
+    snapGuides,
     selectedRoom,
     liveGeometry,
     rotateSelected,
