@@ -96,6 +96,10 @@ service cloud.firestore {
       allow read: if request.auth != null
         && (resource.data.uid == request.auth.uid || isMember(resource.data.uid, resource.data.projectId));
     }
+    match /{path=**}/budgetLines/{lineId} {
+      allow read: if request.auth != null
+        && (resource.data.uid == request.auth.uid || isMember(resource.data.uid, resource.data.projectId));
+    }
 
     // ---- the owned subtree ----
     match /users/{uid} {

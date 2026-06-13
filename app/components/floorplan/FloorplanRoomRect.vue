@@ -15,7 +15,16 @@ const props = defineProps<{
   geometry: Geometry
   progress: Progress
   selected: boolean
+  overBudget?: boolean
 }>()
+
+// UX6: an over-budget room is the isolated, visually distinct item on the plan.
+// Amber warning triangle at the top-left (the ring owns the top-right), with a
+// "!" glyph so the signal is never color-only (Build Conventions).
+const warn = computed(() => ({
+  cx: props.geometry.x + 15,
+  cy: props.geometry.y + 15,
+}))
 
 const status = computed(() => effectiveRoomStatus(props.room.status, props.progress))
 const style = computed(() => STATUS_STYLES[status.value])
@@ -109,6 +118,24 @@ watch(
         :stroke-linecap="progress.pct > 0 ? 'round' : 'butt'"
         :transform="`rotate(-90 ${ring.cx} ${ring.cy})`"
       />
+    </g>
+    <g v-if="overBudget && showLabel" class="fp-room__warn">
+      <title>Over budget</title>
+      <path
+        :d="`M ${warn.cx} ${warn.cy - 9} L ${warn.cx + 9} ${warn.cy + 7} L ${warn.cx - 9} ${warn.cy + 7} Z`"
+        fill="#b26a00"
+        stroke="#fff"
+        stroke-width="1.5"
+        stroke-linejoin="round"
+      />
+      <text
+        :x="warn.cx"
+        :y="warn.cy + 6"
+        text-anchor="middle"
+        font-size="11"
+        font-weight="700"
+        fill="#fff"
+      >!</text>
     </g>
   </g>
 </template>

@@ -130,6 +130,14 @@ export const useProjectStore = defineStore('project', () => {
     await sync.track(() => updateDoc(projectDoc(db, uid(), id), { name }))
   }
 
+  // Owner-only (rules deny project-doc updates to members). Both fields are
+  // integer-domain: cents and a whole-number percent.
+  async function setBudget(id: string, totalBudgetCents: number, contingencyPct: number): Promise<void> {
+    await sync.track(() =>
+      updateDoc(projectDoc(db, uid(), id), { totalBudgetCents, contingencyPct }),
+    )
+  }
+
   async function removeProject(id: string): Promise<void> {
     const owner = uid()
     await sync.track(() => deleteProjectDeep(db, owner, id))
@@ -237,6 +245,7 @@ export const useProjectStore = defineStore('project', () => {
     selectProject,
     createProject,
     renameProject,
+    setBudget,
     removeProject,
     createInvite,
     acceptInvite,

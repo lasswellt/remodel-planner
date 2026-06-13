@@ -24,6 +24,7 @@ const tool = defineModel<FloorplanTool>('tool', { default: 'select' })
 
 const svgEl = ref<SVGSVGElement | null>(null)
 const rollup = useRollup()
+const budget = useProjectBudget()
 
 const fp = useFloorplan({
   svgEl,
@@ -94,6 +95,7 @@ const ghost = computed(() => props.rooms.length === 0)
       :room="room"
       :geometry="fp.liveGeometry(room)"
       :progress="rollup.byRoom(room.id)"
+      :over-budget="budget.overBudgetRoomIds.value.has(room.id)"
       :selected="room.id === selectedId"
     />
 
