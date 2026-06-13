@@ -102,7 +102,7 @@ function addItem() {
         <v-btn icon="mdi-arrow-left" variant="text" to="/rooms" aria-label="Back to rooms" />
         <v-icon :icon="ROOM_TYPE_ICONS[room.type]" size="28" />
         <div class="min-width-0">
-          <h1 class="text-h5 text-truncate">{{ room.name }}</h1>
+          <h1 class="text-h5">{{ room.name }}</h1>
           <div class="text-body-2 text-medium-emphasis">
             {{ typeLabel }} · {{ dimsLabel(room.geometry) }} ({{ sqFt(room.geometry) }} sq ft) · floor {{ room.floor }}
           </div>

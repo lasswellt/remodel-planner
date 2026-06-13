@@ -27,7 +27,7 @@ const template = computed(() => ROOM_TEMPLATES[props.room.type])
         <v-icon :icon="ROOM_TYPE_ICONS[room.type]" size="28" />
       </template>
       <v-card-title>{{ room.name }}</v-card-title>
-      <v-card-subtitle>
+      <v-card-subtitle class="room-meta">
         {{ ROOM_TYPE_LABELS[room.type] }} · {{ dimsLabel(room.geometry) }} ({{ sqFt(room.geometry) }} sq ft) · floor {{ room.floor }}
       </v-card-subtitle>
       <template #append>
@@ -58,3 +58,11 @@ const template = computed(() => ROOM_TEMPLATES[props.room.type])
     </v-card-text>
   </v-card>
 </template>
+
+<style scoped>
+/* Let the metadata wrap on narrow screens instead of truncating "floor N". */
+.room-meta {
+  white-space: normal;
+  line-height: 1.35;
+}
+</style>

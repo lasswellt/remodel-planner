@@ -44,9 +44,7 @@ function toggleTheme() {
         aria-label="Toggle navigation"
         @click="mobile ? (drawer = !drawer) : (rail = !rail)"
       />
-      <!-- Static title is redundant on a phone (project menu carries context);
-           hide it < sm so the app bar isn't crowded at ~390px. -->
-      <v-app-bar-title class="flex-grow-0 mr-2 d-none d-sm-block">Remodel Planner</v-app-bar-title>
+      <v-app-bar-title class="flex-grow-0 mr-2">Remodel Planner</v-app-bar-title>
       <AppProjectMenu v-if="user" />
       <v-spacer />
       <!-- UX9: persistent offline pill + subtle sync indicator; never a spinner. -->

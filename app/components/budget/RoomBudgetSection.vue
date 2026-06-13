@@ -141,8 +141,8 @@ function openEdit(line: BudgetLine) {
             :class="line.actualCents > line.estimateCents ? 'text-error' : 'text-success'"
           >{{ line.actualCents > line.estimateCents ? '+' : '' }}{{ formatMoney(line.actualCents - line.estimateCents) }}</span>
           <v-spacer />
-          <v-btn icon="mdi-pencil-outline" size="x-small" variant="text" aria-label="Edit line" @click="openEdit(line)" />
-          <v-btn icon="mdi-delete-outline" size="x-small" variant="text" color="error" aria-label="Delete line" @click="ops.remove(line)" />
+          <v-btn icon="mdi-pencil-outline" size="small" variant="text" aria-label="Edit line" @click="openEdit(line)" />
+          <v-btn icon="mdi-delete-outline" size="small" variant="text" color="error" aria-label="Delete line" @click="ops.remove(line)" />
         </div>
       </div>
       <div class="d-flex justify-space-between px-2 text-body-2 font-weight-medium">
