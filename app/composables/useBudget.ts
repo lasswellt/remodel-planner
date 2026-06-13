@@ -8,6 +8,7 @@ import {
   projectBudget,
   roomBudget,
 } from '~/utils/budget-math'
+import { useProjectPermits } from '~/composables/usePermits'
 import { useProjectStore } from '~/stores/project'
 import { useSyncStore } from '~/stores/sync'
 import { useUndoStore } from '~/stores/undo'
@@ -18,6 +19,7 @@ import { useUndoStore } from '~/stores/undo'
 export const useProjectBudget = createSharedComposable(() => {
   const db = useFirestore()
   const projectStore = useProjectStore()
+  const permits = useProjectPermits()
 
   const scope = computed(() =>
     projectStore.activeOwnerUid && projectStore.currentProjectId
@@ -37,10 +39,21 @@ export const useProjectBudget = createSharedComposable(() => {
 
   const project = computed(() => {
     const p = projectStore.currentProject
-    return projectBudget(lines.value, p?.totalBudgetCents ?? 0, p?.contingencyPct ?? 15)
+    return projectBudget(
+      lines.value,
+      p?.totalBudgetCents ?? 0,
+      p?.contingencyPct ?? 15,
+      permits.totalFeesCents.value,
+    )
   })
 
-  const breakdown = computed(() => categoryBreakdown(lines.value))
+  // Donut breakdown folds project-level permit fees into the permits category.
+  const breakdown = computed(() => {
+    const b = categoryBreakdown(lines.value)
+    const fees = permits.totalFeesCents.value
+    if (fees > 0) b.permits = { estimateCents: b.permits.estimateCents + fees, actualCents: b.permits.actualCents }
+    return b
+  })
 
   const byRoomEstimates = (roomIds: string[]) => estimateByRoom(lines.value, roomIds)
 

@@ -70,11 +70,14 @@ export function roomBudget(lines: BudgetLineLike[]): RoomBudget {
 
 export interface ProjectBudget {
   totalBudgetCents: number
-  /** Σ estimateCents across every line in the project. */
+  /** Σ estimateCents across every budget line + permit fees. */
   committedCents: number
   /** Σ actualCents across the project. */
   actualCents: number
-  /** round(committed × contingencyPct/100) — the planning-fallacy buffer. */
+  /** Permit fees committed at the project level (Phase 9). */
+  permitFeesCents: number
+  /** round(lineSubtotal × contingencyPct/100) — the planning-fallacy buffer.
+      Contingency is on the construction subtotal, not on fixed permit fees. */
   contingencyCents: number
   /** committed + contingency — the protected commitment. */
   committedWithContingencyCents: number
@@ -90,23 +93,26 @@ export function projectBudget(
   lines: BudgetLineLike[],
   totalBudgetCents: number,
   contingencyPct: number,
+  permitFeesCents = 0,
 ): ProjectBudget {
-  let committedCents = 0
+  let lineSubtotalCents = 0
   let actualCents = 0
   let varianceCents = 0
   for (const l of lines) {
-    committedCents += l.estimateCents
+    lineSubtotalCents += l.estimateCents
     if (l.actualCents != null) {
       actualCents += l.actualCents
       varianceCents += l.actualCents - l.estimateCents
     }
   }
-  // Integer-cents contingency: round half-up on the cent.
-  const contingencyCents = Math.round((committedCents * contingencyPct) / 100)
+  const committedCents = lineSubtotalCents + permitFeesCents
+  // Integer-cents contingency on the construction subtotal (not permit fees).
+  const contingencyCents = Math.round((lineSubtotalCents * contingencyPct) / 100)
   return {
     totalBudgetCents,
     committedCents,
     actualCents,
+    permitFeesCents,
     contingencyCents,
     committedWithContingencyCents: committedCents + contingencyCents,
     remainingCents: totalBudgetCents - committedCents,

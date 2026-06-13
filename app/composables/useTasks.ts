@@ -1,11 +1,12 @@
 import { deleteDoc, doc, setDoc, updateDoc } from 'firebase/firestore'
 import type { UpdateData } from 'firebase/firestore'
-import { useCollection, useFirestore } from 'vuefire'
-import type { Permit, Task, TaskPhase, TaskStatus } from '~/models'
-import { permitsCol, tasksCol } from '~/utils/firestore-paths'
+import { useFirestore } from 'vuefire'
+import type { Task, TaskPhase, TaskStatus } from '~/models'
+import { tasksCol } from '~/utils/firestore-paths'
 import type { Blocker } from '~/utils/task-graph'
 import { taskBlockers } from '~/utils/task-graph'
 import { useProjectSelections } from '~/composables/useSelections'
+import { useProjectPermits } from '~/composables/usePermits'
 import { useProjectStore } from '~/stores/project'
 import { useSyncStore } from '~/stores/sync'
 import { useUndoStore } from '~/stores/undo'
@@ -14,17 +15,9 @@ import { useUndoStore } from '~/stores/undo'
 // rollup (one listener); this adds selection + permit-inspection listeners so
 // blockers resolve. createSharedComposable so the board and the floorplan agree.
 export const useProjectTasks = createSharedComposable(() => {
-  const db = useFirestore()
-  const projectStore = useProjectStore()
   const rollup = useRollup()
   const { selections } = useProjectSelections()
-
-  const permitsSource = computed(() =>
-    projectStore.activeOwnerUid && projectStore.currentProjectId
-      ? permitsCol(db, projectStore.activeOwnerUid, projectStore.currentProjectId)
-      : null,
-  )
-  const permits = useCollection<Permit>(permitsSource, { ssrKey: 'task-permits' })
+  const { permits, inspections } = useProjectPermits()
 
   // Narrow to the exact shapes task-graph expects (Map value invariance means a
   // Map<string, Task> won't pass as Map<string, {label,status}>).
@@ -34,7 +27,6 @@ export const useProjectTasks = createSharedComposable(() => {
   const selectionsById = computed(() =>
     new Map(selections.value.map(s => [s.id, { label: s.label, status: s.status }])),
   )
-  const inspections = computed(() => permits.value.flatMap(p => p.inspections))
 
   function blockersFor(task: Task): Blocker[] {
     return taskBlockers(task, tasksById.value, selectionsById.value, inspections.value)

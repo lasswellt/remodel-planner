@@ -124,6 +124,9 @@ function exportCsv() {
             <div>
               <div class="text-body-2 text-medium-emphasis">Committed (estimated)</div>
               <div class="text-h6">{{ formatMoney(project.committedCents) }}</div>
+              <div v-if="project.permitFeesCents > 0" class="text-caption text-medium-emphasis">
+                incl. {{ formatMoney(project.permitFeesCents) }} permits
+              </div>
             </div>
             <div>
               <div class="text-body-2 text-medium-emphasis d-flex align-center ga-1">

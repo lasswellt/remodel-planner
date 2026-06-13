@@ -76,6 +76,18 @@ describe('projectBudget', () => {
     expect(p.remainingCents).toBe(-100_000)
     expect(p.overBudget).toBe(true)
   })
+
+  it('folds permit fees into committed + remaining, but not into contingency', () => {
+    const p = projectBudget([line({ estimateCents: 200_000 })], 500_000, 15, 50_000)
+    expect(p.permitFeesCents).toBe(50_000)
+    expect(p.committedCents).toBe(250_000) // 200k lines + 50k permit fees
+    expect(p.contingencyCents).toBe(30_000) // 15% of the 200k construction subtotal only
+    expect(p.remainingCents).toBe(250_000) // 500k − 250k
+  })
+
+  it('defaults permit fees to zero', () => {
+    expect(projectBudget([line({ estimateCents: 100_000 })], 200_000, 10).permitFeesCents).toBe(0)
+  })
 })
 
 describe('categoryBreakdown', () => {

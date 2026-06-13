@@ -11,6 +11,7 @@ export const NAV_ITEMS: NavItem[] = [
   { title: 'Rooms', to: '/rooms', icon: 'mdi-view-grid-outline' },
   { title: 'Budget', to: '/budget', icon: 'mdi-cash-multiple' },
   { title: 'Tasks', to: '/tasks', icon: 'mdi-checkbox-marked-outline' },
+  { title: 'Permits', to: '/permits', icon: 'mdi-file-document-check-outline' },
   { title: 'Inspiration', to: '/inspiration', icon: 'mdi-image-multiple-outline' },
   { title: 'Research', to: '/research', icon: 'mdi-book-open-variant' },
 ]
