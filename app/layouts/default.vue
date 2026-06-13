@@ -10,7 +10,9 @@ const { mobile } = useDisplay()
 const sync = useSyncStore()
 const online = useOnline()
 watch(online, value => sync.setOnline(value), { immediate: true })
-const drawer = ref(true)
+// Desktop: drawer is permanent (always shown). Mobile: it's a temporary
+// overlay, so start it CLOSED — otherwise it covers the app on first load.
+const drawer = ref(!mobile.value)
 const rail = ref(false)
 
 watchEffect(() => {

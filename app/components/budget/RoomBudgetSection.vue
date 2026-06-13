@@ -54,7 +54,9 @@ function openEdit(line: BudgetLine) {
       <v-btn size="small" variant="tonal" prepend-icon="mdi-plus" @click="openAdd">Add line</v-btn>
     </div>
 
-    <v-table v-if="lines.length > 0" density="compact" class="budget-table mb-2">
+    <!-- Tablet/desktop: full table. Phones (< sm): stacked cards (below) so the
+         6 columns don't horizontal-scroll and the actions stay reachable. -->
+    <v-table v-if="lines.length > 0" density="compact" class="budget-table mb-2 d-none d-sm-block">
       <thead>
         <tr>
           <th>Item</th>
@@ -120,7 +122,41 @@ function openEdit(line: BudgetLine) {
       </tfoot>
     </v-table>
 
-    <p v-else class="text-body-2 text-medium-emphasis">
+    <!-- Phone layout: one card per line, all data + actions visible (no scroll). -->
+    <div v-if="lines.length > 0" class="d-sm-none mb-2">
+      <div v-for="line in lines" :key="line.id" class="bl-card pa-2 mb-2">
+        <div class="d-flex align-center ga-2">
+          <div class="flex-grow-1 bl-label">
+            <a v-if="line.link" :href="line.link" target="_blank" rel="noopener" class="text-primary">{{ line.label }}</a>
+            <span v-else>{{ line.label }}</span>
+            <div v-if="line.vendor" class="text-caption text-medium-emphasis">{{ line.vendor }}</div>
+          </div>
+          <v-chip size="x-small" variant="tonal">{{ BUDGET_CATEGORY_LABELS[line.category] }}</v-chip>
+        </div>
+        <div class="d-flex align-center ga-3 mt-1 text-body-2">
+          <span>Est {{ formatMoney(line.estimateCents) }}</span>
+          <span v-if="line.actualCents != null">Act {{ formatMoney(line.actualCents) }}</span>
+          <span
+            v-if="line.actualCents != null"
+            :class="line.actualCents > line.estimateCents ? 'text-error' : 'text-success'"
+          >{{ line.actualCents > line.estimateCents ? '+' : '' }}{{ formatMoney(line.actualCents - line.estimateCents) }}</span>
+          <v-spacer />
+          <v-btn icon="mdi-pencil-outline" size="x-small" variant="text" aria-label="Edit line" @click="openEdit(line)" />
+          <v-btn icon="mdi-delete-outline" size="x-small" variant="text" color="error" aria-label="Delete line" @click="ops.remove(line)" />
+        </div>
+      </div>
+      <div class="d-flex justify-space-between px-2 text-body-2 font-weight-medium">
+        <span>Subtotal</span>
+        <span>
+          {{ formatMoney(summary.estimateCents) }}
+          <span v-if="summary.varianceCents !== 0" :class="summary.varianceCents > 0 ? 'text-error' : 'text-success'">
+            ({{ summary.varianceCents > 0 ? '+' : '' }}{{ formatMoney(summary.varianceCents) }})
+          </span>
+        </span>
+      </div>
+    </div>
+
+    <p v-if="lines.length === 0" class="text-body-2 text-medium-emphasis">
       No budget lines yet. Add one — the estimate field shows this room type's typical range.
     </p>
 
@@ -131,5 +167,13 @@ function openEdit(line: BudgetLine) {
 <style scoped>
 .budget-table :deep(th) {
   font-weight: 600;
+}
+.bl-card {
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 8px;
+}
+.bl-label {
+  min-width: 0;
+  word-break: break-word;
 }
 </style>
