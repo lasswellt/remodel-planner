@@ -160,11 +160,17 @@ place, so the floorplan rings, app-bar ring, and dashboards cannot disagree.
 
 ## Deploy (prod)
 
+See **[`DEPLOY.md`](./DEPLOY.md)** for the full runbook. Prod deploy is blocked
+on owner GCP setup (prod is unbilled with no infra, and `.env.production` still
+holds dev placeholder config); the repo-side config (`.firebaserc`,
+`firebase.json`, rules, indexes, `scripts/setup-backups.sh`) is complete and
+`pnpm generate` produces the deployable static SPA.
+
 ```bash
-# build with prod env, then deploy hosting + rules + indexes + storage
+# after the DEPLOY.md prerequisites (billing, APIs, prod web config) are done:
 NODE_ENV=production pnpm generate
 firebase deploy --only hosting,firestore:rules,firestore:indexes,storage --project prod
-# backups + App Check enforcement (see scripts/setup-backups.sh, Phase 13)
+scripts/setup-backups.sh remodel-planner-prod us-east1
 ```
 
 App Check (reCAPTCHA Enterprise) runs with a debug token in dev; enforcement on
