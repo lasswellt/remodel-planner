@@ -3,12 +3,14 @@ import { ROOM_TYPE_ICONS, ROOM_TYPE_LABELS } from '~/config/rooms'
 import { CATEGORY_ORDER, ROOM_TEMPLATES } from '~/config/templates'
 import { dimsLabel, sqFt } from '~/utils/geometry'
 import { useRoomsStore } from '~/stores/rooms'
+import { useProjectStore } from '~/stores/project'
 
 // Room detail: the full checklist experience (Phase 5). Grouped by category
 // with collapse state remembered (UX5); template application is framed as a
 // head start (UX2); item deletion is undo-snackbar (UX8).
 const route = useRoute()
 const roomsStore = useRoomsStore()
+const projectStore = useProjectStore()
 const rollup = useRollup()
 const { applyTemplate } = useTemplateApply()
 
@@ -201,6 +203,15 @@ function addItem() {
       <section class="mt-8">
         <h2 class="text-h6 mb-2">Selections</h2>
         <SelectionsSection :room="room" />
+      </section>
+
+      <!-- Photos (Phase 10): owner-only, since Storage is owner-scoped -->
+      <section class="mt-8">
+        <h2 class="text-h6 mb-2">Photos</h2>
+        <PhotosPhotoGallery v-if="!projectStore.isSharedProject" :room="room" />
+        <p v-else class="text-body-2 text-medium-emphasis">
+          Photos are visible to the project owner only.
+        </p>
       </section>
 
       <v-snackbar
