@@ -14,7 +14,7 @@ const entry = computed(() => bySlug[props.tag])
       <v-btn
         v-bind="menuProps"
         icon="mdi-information-outline"
-        size="x-small"
+        size="small"
         variant="text"
         density="comfortable"
         :aria-label="`Why it matters: ${entry.title}`"

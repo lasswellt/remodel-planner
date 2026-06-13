@@ -17,16 +17,17 @@ const { entries } = useResearch()
     <v-card v-for="entry in entries" :id="entry.slug" :key="entry.slug" class="mb-6 research-section">
       <v-card-item>
         <v-card-title class="text-h6">{{ entry.title }}</v-card-title>
-        <v-card-subtitle class="mt-1">
-          <v-chip
-            v-for="roomName in entry.rooms"
-            :key="roomName"
-            size="x-small"
-            variant="tonal"
-            class="mr-1"
-          >
-            {{ roomName }}
-          </v-chip>
+        <v-card-subtitle class="mt-1 research-rooms">
+          <div class="d-flex flex-wrap ga-1">
+            <v-chip
+              v-for="roomName in entry.rooms"
+              :key="roomName"
+              size="x-small"
+              variant="tonal"
+            >
+              {{ roomName }}
+            </v-chip>
+          </div>
         </v-card-subtitle>
       </v-card-item>
       <v-card-text>
@@ -59,5 +60,10 @@ const { entries } = useResearch()
 /* Anchored sections land below the app bar, not under it. */
 .research-section {
   scroll-margin-top: 80px;
+}
+/* Let the room chips wrap to multiple rows instead of clipping at the edge
+   (v-card-subtitle defaults to nowrap + ellipsis). */
+.research-rooms {
+  white-space: normal;
 }
 </style>

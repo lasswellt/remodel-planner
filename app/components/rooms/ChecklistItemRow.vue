@@ -16,7 +16,7 @@ function toggle() {
 </script>
 
 <template>
-  <v-list-item :title="item.label" :subtitle="item.notes" @click="toggle">
+  <v-list-item :title="item.label" :subtitle="item.notes" class="checklist-row" @click="toggle">
     <template #prepend>
       <!-- @click.stop: a tap on the checkbox must not also bubble to the row
            click — that would fire a duplicate write. -->
@@ -29,15 +29,24 @@ function toggle() {
       />
     </template>
     <template #append>
-      <PsychologyPopover v-if="item.psychologyTag" :tag="item.psychologyTag" />
-      <v-btn
-        v-if="removable"
-        icon="mdi-delete-outline"
-        size="x-small"
-        variant="text"
-        :aria-label="`Delete ${item.label}`"
-        @click.stop="ops.remove(item)"
-      />
+      <div class="d-flex align-center ga-1">
+        <PsychologyPopover v-if="item.psychologyTag" :tag="item.psychologyTag" />
+        <v-btn
+          v-if="removable"
+          icon="mdi-delete-outline"
+          size="small"
+          variant="text"
+          :aria-label="`Delete ${item.label}`"
+          @click.stop="ops.remove(item)"
+        />
+      </div>
     </template>
   </v-list-item>
 </template>
+
+<style scoped>
+/* Long checklist labels wrap instead of truncating to "…" on narrow screens. */
+.checklist-row :deep(.v-list-item-title) {
+  white-space: normal;
+}
+</style>
