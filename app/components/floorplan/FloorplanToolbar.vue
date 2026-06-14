@@ -1,9 +1,12 @@
 <script setup lang="ts">
+import type { FixtureKind, OpeningKind } from '~/models'
 import type { FloorplanTool } from '~/composables/useFloorplan'
 import { GRID_STEPS } from '~/utils/geometry'
+import { FIXTURE_CATALOG, FIXTURE_OPTIONS } from '~/config/fixtures'
 
 // Floorplan controls: tool toggle, multi-floor tabs, grid size, export. One
-// primary action zone (UX5) — drawing; everything else stays compact.
+// primary action zone (UX5) — drawing; everything else stays compact. The
+// opening (door/window) and fixture pickers appear contextually for their tool.
 defineProps<{
   floors: number[]
   exportDisabled: boolean
@@ -18,6 +21,8 @@ const emit = defineEmits<{
 const tool = defineModel<FloorplanTool>('tool', { default: 'select' })
 const gridStep = defineModel<number>('gridStep', { default: 6 })
 const floor = defineModel<number>('floor', { default: 1 })
+const openingKind = defineModel<OpeningKind>('openingKind', { default: 'door' })
+const fixtureKind = defineModel<FixtureKind>('fixtureKind', { default: 'tub' })
 
 const gridItems = GRID_STEPS.map(step => ({
   title: `${step}″ grid`,
@@ -43,7 +48,45 @@ const gridItems = GRID_STEPS.map(step => ({
       >
         Notch
       </v-btn>
+      <v-btn value="opening" prepend-icon="mdi-door" size="small" aria-label="Place a door or window">
+        Opening
+      </v-btn>
+      <v-btn value="fixture" prepend-icon="mdi-bathtub-outline" size="small" aria-label="Place a fixture">
+        Fixture
+      </v-btn>
     </v-btn-toggle>
+
+    <!-- Contextual: door vs window when placing an opening -->
+    <v-btn-toggle
+      v-if="tool === 'opening'"
+      v-model="openingKind"
+      mandatory
+      density="comfortable"
+      variant="outlined"
+      divided
+    >
+      <v-btn value="door" prepend-icon="mdi-door" size="small">Door</v-btn>
+      <v-btn value="window" prepend-icon="mdi-window-closed-variant" size="small">Window</v-btn>
+    </v-btn-toggle>
+
+    <!-- Contextual: which fixture to drop -->
+    <v-select
+      v-if="tool === 'fixture'"
+      v-model="fixtureKind"
+      :items="FIXTURE_OPTIONS"
+      :item-props="(item: typeof FIXTURE_OPTIONS[number]) => ({ prependIcon: item.icon })"
+      density="compact"
+      hide-details
+      variant="outlined"
+      class="fp-fixture-select"
+      aria-label="Fixture to place"
+    />
+    <v-icon
+      v-if="tool === 'fixture'"
+      :icon="FIXTURE_CATALOG[fixtureKind].icon"
+      class="text-medium-emphasis"
+      aria-hidden="true"
+    />
 
     <v-tabs v-model="floor" density="compact" class="fp-floor-tabs">
       <v-tab v-for="f in floors" :key="f" :value="f" size="small">
@@ -93,6 +136,9 @@ const gridItems = GRID_STEPS.map(step => ({
 <style scoped>
 .fp-grid-select {
   max-width: 120px;
+}
+.fp-fixture-select {
+  max-width: 170px;
 }
 .fp-floor-tabs {
   max-width: 50%;

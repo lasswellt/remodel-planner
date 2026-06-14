@@ -24,5 +24,19 @@ export const GRID_MINOR = '#E4E8EE'
 export const GRID_MAJOR = '#CDD4DE'
 export const PLAN_BG = '#FFFFFF'
 
+// Walls render as a solid structural band, darker than any room fill so the
+// shell reads as built mass. Openings cut the band; the gap shows PLAN_BG.
+export const WALL_FILL = '#8A93A1'
+export const WALL_STROKE = '#5B6472'
+// Door leaf + swing arc; window glazing (distinct hue so glass ≠ door).
+export const DOOR_COLOR = '#5B6472'
+export const WINDOW_COLOR = '#2E78C7'
+// Fixtures: a light card on the floor with a legible outline + label.
+export const FIXTURE_FILL = '#EEF1F5'
+export const FIXTURE_STROKE = '#6B7280'
+export const FIXTURE_DETAIL = '#9AA4B2'
+export const FIXTURE_LABEL = '#3A4250'
+export const FIXTURE_SELECTED = '#1565C0'
+
 export const FONT_STACK
   = 'system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'

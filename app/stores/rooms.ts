@@ -21,6 +21,7 @@ export type RoomPatch = Partial<{
   status: RoomStatus
   floor: number
   geometry: Geometry
+  z: number
 }>
 
 export const useRoomsStore = defineStore('rooms', () => {
@@ -50,7 +51,9 @@ export const useRoomsStore = defineStore('rooms', () => {
     const { uid, projectId } = scope()
     const col = roomsCol(db, uid, projectId)
     const id = doc(col).id
-    const room: Room = { id, uid, projectId, status: 'planned', ...input }
+    // New rooms stack on top so they bite overlaps rather than being bitten.
+    const maxZ = Math.max(0, ...rooms.value.map(r => r.z ?? 0))
+    const room: Room = { id, uid, projectId, status: 'planned', z: maxZ + 1, ...input }
     void sync.track(() => setDoc(doc(col, id), room))
     return id
   }

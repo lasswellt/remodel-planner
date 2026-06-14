@@ -1,7 +1,12 @@
-import type { Geometry, Room, RoomStatus } from '~/models'
-import { buildRoomPath, sqFt, WORLD } from '~/utils/geometry'
+import type { Fixture, Geometry, Room, RoomStatus } from '~/models'
+import { buildRoomPath, effectiveGeometry, fixtureWorldRect, sqFt, WORLD } from '~/utils/geometry'
+import { allOpeningPrims, fixtureDetailPrims, primsSvg, wallPrims } from '~/utils/floorplan-draw'
+import { fixtureLabel } from '~/config/fixtures'
 import type { Progress } from '~/utils/rollup'
 import {
+  FIXTURE_FILL,
+  FIXTURE_LABEL,
+  FIXTURE_STROKE,
   FONT_STACK,
   GRID_MAJOR,
   GRID_MINOR,
@@ -42,8 +47,17 @@ function ringSvg(geo: Geometry, p: Progress): string {
   return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${RING_TRACK}" stroke-width="4"/>${arc}`
 }
 
-function roomSvg(room: Room, p: Progress, status: RoomStatus): string {
-  const g = room.geometry
+function fixtureSvg(geo: Geometry, f: Fixture): string {
+  const r = fixtureWorldRect(geo, f)
+  const detail = primsSvg(fixtureDetailPrims(r, f.kind))
+  const text = r.w >= 28 && r.h >= 16
+    ? `<text x="${r.x + r.w / 2}" y="${r.y + r.h / 2 + 3}" text-anchor="middle" font-family='${FONT_STACK}' font-size="9" fill="${FIXTURE_LABEL}">${esc(fixtureLabel(f.kind, f.label))}</text>`
+    : ''
+  return `<rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" rx="2" fill="${FIXTURE_FILL}" stroke="${FIXTURE_STROKE}" stroke-width="1.25"/>${detail}${text}`
+}
+
+// `g` is the room's effective geometry (overlap bites already folded in).
+function roomSvg(room: Room, g: Geometry, p: Progress, status: RoomStatus): string {
   const style = STATUS_STYLES[status]
   const dash = style.dash ? ` stroke-dasharray="${style.dash}"` : ''
   const name = (status === 'done' ? '✓ ' : '') + room.name
@@ -59,14 +73,23 @@ function roomSvg(room: Room, p: Progress, status: RoomStatus): string {
     const size = Math.min(13, g.h - 4, g.w - 4)
     label = `<text x="${cx}" y="${cy + 4}" text-anchor="middle" font-family='${FONT_STACK}' font-size="${size}" font-weight="600" fill="${LABEL_COLOR}">✓</text>`
   }
-  return `<g><path d="${buildRoomPath(g)}" fill-rule="evenodd" fill="${style.fill}" stroke="${style.stroke}" stroke-width="2.5" stroke-linejoin="round"${dash}/>${label}${ringSvg(g, p)}</g>`
+  const walls = primsSvg(wallPrims(g))
+  const openings = primsSvg(allOpeningPrims(g))
+  const fixtures = (g.fixtures ?? []).map(f => fixtureSvg(g, f)).join('')
+  return `<g><path d="${buildRoomPath(g)}" fill-rule="evenodd" fill="${style.fill}" stroke="${style.stroke}" stroke-width="2.5" stroke-linejoin="round"${dash}/>${walls}${openings}${label}${fixtures}${ringSvg(g, p)}</g>`
 }
 
 export function buildFloorplanSvg(input: ExportInput): string {
   const major = input.gridStep * 4
+  // Effective geometry per room so exports show the same overlap bites as the
+  // live canvas. `input.rooms` is one floor (different floors never interact).
+  const stack = input.rooms.map(r => ({ id: r.id, z: r.z, geometry: r.geometry }))
+  const effOf = (id: string, fallback: Geometry) =>
+    effectiveGeometry(stack.find(s => s.id === id)!, stack) ?? fallback
   const roomsMarkup = input.rooms
     .map(r => roomSvg(
       r,
+      effOf(r.id, r.geometry),
       input.progressByRoom[r.id] ?? { done: 0, total: 0, pct: 0, complete: false },
       input.statusByRoom[r.id] ?? r.status,
     ))
