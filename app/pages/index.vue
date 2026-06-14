@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { Geometry, Notch, Room, RoomType } from '~/models'
-import type { FloorplanTool } from '~/composables/useFloorplan'
+import type { Fixture, FixtureKind, Geometry, Notch, Opening, OpeningKind, Room, RoomType } from '~/models'
+import type { DimDetail, FloorplanTool } from '~/composables/useFloorplan'
 import FloorplanCanvas from '~/components/floorplan/FloorplanCanvas.vue'
-import { DEFAULT_GRID_STEP } from '~/utils/geometry'
+import { clampFixtureToRoom, DEFAULT_GRID_STEP } from '~/utils/geometry'
 import { buildFloorplanSvg, downloadPng, downloadSvg, slugify } from '~/utils/floorplan-export'
 import { effectiveRoomStatus } from '~/utils/rollup'
 import { useProjectStore } from '~/stores/project'
@@ -18,8 +18,13 @@ const { mdAndUp } = useDisplay()
 
 const tool = ref<FloorplanTool>('select')
 const gridStep = useLocalStorage('remodel.gridStep', DEFAULT_GRID_STEP)
+const dimDetail = useLocalStorage<DimDetail>('remodel.dimDetail', 'medium')
 const floor = ref(1)
 const selectedId = ref<string | null>(null)
+const selectedFixtureId = ref<string | null>(null)
+const selectedOpeningId = ref<string | null>(null)
+const openingKind = ref<OpeningKind>('door')
+const fixtureKind = ref<FixtureKind>('tub')
 const canvas = ref<InstanceType<typeof FloorplanCanvas> | null>(null)
 
 // Floors are a contiguous 1..top range so a gap floor (rooms on 1 and 3 only)
@@ -35,11 +40,13 @@ const selectedRoom = computed(
   () => floorRooms.value.find(r => r.id === selectedId.value) ?? null,
 )
 
-watch(floor, () => (selectedId.value = null))
+watch(floor, () => { selectedId.value = null; selectedFixtureId.value = null; selectedOpeningId.value = null })
 // Exit notch mode when the selection is cleared
 watch(selectedId, (id) => { if (!id && tool.value === 'notch') tool.value = 'select' })
 watch(() => projectStore.currentProjectId, () => {
   selectedId.value = null
+  selectedFixtureId.value = null
+  selectedOpeningId.value = null
   floor.value = 1
   addedTop.value = 1
 })
@@ -111,9 +118,89 @@ function onDeleteNotch(roomId: string, notchId: string) {
   })
 }
 
-// Delegated to the canvas so the rotation includes any in-flight nudge overlay.
+// Dragging a room brings it strictly to the front so it bites overlaps. Compare
+// against the OTHER rooms (not including this one) and bump on a tie too —
+// otherwise a room tied for the top z loses the z-tiebreak to array order and
+// gets bitten by the room it was dropped on. No-op when already the unique top.
+function onBringToFront(id: string) {
+  const room = roomsStore.roomById[id]
+  if (!room) return
+  const maxOther = Math.max(0, ...roomsStore.rooms.filter(r => r.id !== id).map(r => r.z ?? 0))
+  if ((room.z ?? 0) <= maxOther) roomsStore.updateRoom(id, { z: maxOther + 1 })
+}
+
+// --- openings (doors / windows) ---
+function onAddOpening(roomId: string, opening: Omit<Opening, 'id'>) {
+  const room = roomsStore.roomById[roomId]
+  if (!room) return
+  const id = crypto.randomUUID()
+  roomsStore.updateRoom(roomId, {
+    geometry: { ...room.geometry, openings: [...(room.geometry.openings ?? []), { id, ...opening }] },
+  })
+  selectedOpeningId.value = id // select the just-placed opening for tweaking
+}
+
+function onCommitOpening(roomId: string, opening: Opening) {
+  const room = roomsStore.roomById[roomId]
+  if (!room) return
+  roomsStore.updateRoom(roomId, {
+    geometry: { ...room.geometry, openings: (room.geometry.openings ?? []).map(o => (o.id === opening.id ? opening : o)) },
+  })
+}
+
+function onDeleteOpening(roomId: string, openingId: string) {
+  const room = roomsStore.roomById[roomId]
+  if (!room) return
+  roomsStore.updateRoom(roomId, {
+    geometry: { ...room.geometry, openings: (room.geometry.openings ?? []).filter(o => o.id !== openingId) },
+  })
+  if (selectedOpeningId.value === openingId) selectedOpeningId.value = null
+}
+
+// --- fixtures ---
+function onAddFixture(roomId: string, fixture: Omit<Fixture, 'id'>) {
+  const room = roomsStore.roomById[roomId]
+  if (!room) return
+  const id = crypto.randomUUID()
+  roomsStore.updateRoom(roomId, {
+    geometry: { ...room.geometry, fixtures: [...(room.geometry.fixtures ?? []), { id, ...fixture }] },
+  })
+  selectedFixtureId.value = id // select the freshly placed fixture for tweaking
+}
+
+function onCommitFixture(roomId: string, fixture: Fixture) {
+  const room = roomsStore.roomById[roomId]
+  if (!room) return
+  roomsStore.updateRoom(roomId, {
+    geometry: {
+      ...room.geometry,
+      fixtures: (room.geometry.fixtures ?? []).map(f => (f.id === fixture.id ? fixture : f)),
+    },
+  })
+}
+
+function onDeleteFixture(roomId: string, fixtureId: string) {
+  const room = roomsStore.roomById[roomId]
+  if (!room) return
+  roomsStore.updateRoom(roomId, {
+    geometry: { ...room.geometry, fixtures: (room.geometry.fixtures ?? []).filter(f => f.id !== fixtureId) },
+  })
+  if (selectedFixtureId.value === fixtureId) selectedFixtureId.value = null
+}
+
+// Panel edits to a fixture (size / rotation / label) re-clamp it into the room.
+function onUpdateFixture(roomId: string, fixtureId: string, patch: Partial<Fixture>) {
+  const room = roomsStore.roomById[roomId]
+  const current = room?.geometry.fixtures?.find(f => f.id === fixtureId)
+  if (!room || !current) return
+  const merged = { ...current, ...patch }
+  onCommitFixture(roomId, { ...merged, ...clampFixtureToRoom(room.geometry, merged) })
+}
+
+// The panel footer rotates the room (the fixture editor rotates a fixture);
+// delegated to the canvas so it includes any in-flight overlay.
 function onRotate() {
-  canvas.value?.rotateSelected()
+  canvas.value?.rotateRoom()
 }
 
 function addFloor() {
@@ -167,6 +254,9 @@ const projectCreateOpen = ref(false)
       v-model:tool="tool"
       v-model:grid-step="gridStep"
       v-model:floor="floor"
+      v-model:opening-kind="openingKind"
+      v-model:fixture-kind="fixtureKind"
+      v-model:dim-detail="dimDetail"
       :floors="floors"
       :export-disabled="floorRooms.length === 0"
       :has-selection="!!selectedId"
@@ -179,23 +269,41 @@ const projectCreateOpen = ref(false)
         <FloorplanCanvas
           ref="canvas"
           v-model:selected="selectedId"
+          v-model:selected-fixture="selectedFixtureId"
+          v-model:selected-opening="selectedOpeningId"
           v-model:tool="tool"
           :rooms="floorRooms"
           :grid-step="gridStep"
+          :opening-kind="openingKind"
+          :fixture-kind="fixtureKind"
+          :dim-detail="dimDetail"
           @create="onCreate"
           @commit="onCommit"
           @delete-request="onDeleteRequest"
           @add-notch="onAddNotch"
+          @bring-to-front="onBringToFront"
+          @add-opening="onAddOpening"
+          @commit-opening="onCommitOpening"
+          @delete-opening="onDeleteOpening"
+          @add-fixture="onAddFixture"
+          @commit-fixture="onCommitFixture"
+          @delete-fixture="onDeleteFixture"
         />
       </div>
       <div v-if="selectedRoom && mdAndUp" class="fp-panel-col">
         <FloorplanRoomSummaryPanel
           :room="selectedRoom"
+          :selected-fixture-id="selectedFixtureId"
+          :selected-opening-id="selectedOpeningId"
           @close="selectedId = null"
           @delete-request="onDeleteRequest"
           @rotate="onRotate"
           @activate-notch-tool="tool = 'notch'"
           @delete-notch="onDeleteNotch"
+          @update-fixture="onUpdateFixture"
+          @delete-fixture="onDeleteFixture"
+          @select-fixture="(id: string | null) => selectedFixtureId = id"
+          @select-opening="(id: string | null) => selectedOpeningId = id"
         />
       </div>
     </div>
@@ -209,11 +317,17 @@ const projectCreateOpen = ref(false)
       <FloorplanRoomSummaryPanel
         v-if="selectedRoom"
         :room="selectedRoom"
+        :selected-fixture-id="selectedFixtureId"
+        :selected-opening-id="selectedOpeningId"
         @close="selectedId = null"
         @delete-request="onDeleteRequest"
         @rotate="onRotate"
         @activate-notch-tool="tool = 'notch'"
         @delete-notch="onDeleteNotch"
+        @update-fixture="onUpdateFixture"
+        @delete-fixture="onDeleteFixture"
+        @select-fixture="(id: string | null) => selectedFixtureId = id"
+        @select-opening="(id: string | null) => selectedOpeningId = id"
       />
     </v-bottom-sheet>
 

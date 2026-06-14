@@ -1,20 +1,37 @@
 import type { Ref } from 'vue'
-import type { Geometry, Notch, Room } from '~/models'
+import type { Fixture, FixtureKind, Geometry, Notch, Opening, OpeningKind, Room, WallSide } from '~/models'
 import {
+  clampFixtureToRoom,
   clampToWorld,
   edgeSnapTargets,
+  footprintRect,
   MIN_ROOM_SIZE,
+  moveFixtureTo,
   moveTo,
   nudge,
+  openingHitTest,
+  openingOffsetAt,
   rectFromCorners,
   rotate90,
+  rotateFixture90,
   sameRect,
+  snapTo,
   type SnapTargets,
   snapScalar,
+  wallAxis,
 } from '~/utils/geometry'
+import { FIXTURE_CATALOG } from '~/config/fixtures'
 
-export type FloorplanTool = 'select' | 'draw' | 'notch'
+export type FloorplanTool = 'select' | 'draw' | 'notch' | 'opening' | 'fixture'
 export type HandleId = 'nw' | 'ne' | 'sw' | 'se'
+// How much dimensioning to annotate on the plan: names only / room sizes /
+// room sizes + every opening position + fixture sizes.
+export type DimDetail = 'low' | 'medium' | 'all'
+
+const DEFAULT_DOOR_WIDTH = 32
+const DEFAULT_WINDOW_WIDTH = 36
+const DEFAULT_SILL = 36
+const DEFAULT_WINDOW_HEIGHT = 48
 
 interface Point { x: number, y: number }
 
@@ -24,6 +41,8 @@ type Mode
     | { kind: 'notching', anchor: Point, roomId: string }
     | { kind: 'moving', id: string, start: Point, orig: Geometry }
     | { kind: 'resizing', id: string, anchor: Point, orig: Geometry }
+    | { kind: 'movingFixture', roomId: string, fixtureId: string, start: Point, orig: Fixture }
+    | { kind: 'movingOpening', roomId: string, openingId: string, orig: Opening, grab: number }
 
 export interface UseFloorplanOptions {
   svgEl: Ref<SVGSVGElement | null>
@@ -31,20 +50,42 @@ export interface UseFloorplanOptions {
   tool: Ref<FloorplanTool>
   gridStep: Ref<number>
   selectedId: Ref<string | null>
+  selectedFixtureId: Ref<string | null>
+  selectedOpeningId: Ref<string | null>
+  openingKind: Ref<OpeningKind>
+  fixtureKind: Ref<FixtureKind>
   onCreate: (geo: Geometry) => void
   onCommit: (id: string, geo: Geometry) => void
   onDeleteRequest: (id: string) => void
   onAddNotch: (roomId: string, notch: Omit<Notch, 'id'>) => void
+  onBringToFront: (id: string) => void
+  onAddOpening: (roomId: string, opening: Omit<Opening, 'id'>) => void
+  onCommitOpening: (roomId: string, opening: Opening) => void
+  onDeleteOpening: (roomId: string, openingId: string) => void
+  onAddFixture: (roomId: string, fixture: Omit<Fixture, 'id'>) => void
+  onCommitFixture: (roomId: string, fixture: Fixture) => void
+  onDeleteFixture: (roomId: string, fixtureId: string) => void
+}
+
+function sameFixture(a: Fixture, b: Fixture): boolean {
+  return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h && a.rotation === b.rotation
+}
+
+function pointInRect(pt: Point, r: { x: number, y: number, w: number, h: number }): boolean {
+  return pt.x >= r.x && pt.x <= r.x + r.w && pt.y >= r.y && pt.y <= r.y + r.h
 }
 
 // Pointer/keyboard state machine for the floorplan canvas: draw, drag, resize,
-// nudge, rotate, notch. Persistence stays outside (callbacks); while a gesture
-// is in flight the live geometry is a local overlay — exactly one write on end.
+// nudge, rotate, notch rooms; place doors/windows; place, drag and rotate
+// fixtures. Persistence stays outside (callbacks); while a gesture is in flight
+// the live geometry/fixture is a local overlay — exactly one write on end.
 export function useFloorplan(opts: UseFloorplanOptions) {
   const mode = ref<Mode>({ kind: 'idle' })
   const draftRect = ref<Geometry | null>(null)
   const notchDraft = ref<Geometry | null>(null)
   const overlay = ref<{ id: string, geo: Geometry } | null>(null)
+  const fixtureOverlay = ref<{ roomId: string, fixtureId: string, fixture: Fixture } | null>(null)
+  const openingOverlay = ref<{ roomId: string, openingId: string, opening: Opening } | null>(null)
   // The edge lines the in-flight gesture is currently magnetized to (rendered
   // as guides). Cleared when the gesture ends.
   const snapGuides = ref<{ x: number | null, y: number | null }>({ x: null, y: null })
@@ -53,14 +94,68 @@ export function useFloorplan(opts: UseFloorplanOptions) {
     () => opts.rooms.value.find(r => r.id === opts.selectedId.value) ?? null,
   )
 
+  // The selected fixture resolved to its owning room + live geometry.
+  const selectedFixture = computed(() => {
+    const fid = opts.selectedFixtureId.value
+    if (!fid) return null
+    for (const room of opts.rooms.value) {
+      const f = (room.geometry.fixtures ?? []).find(x => x.id === fid)
+      if (f) return { room, fixture: liveFixtureOf(room, f) }
+    }
+    return null
+  })
+
+  // The selected opening resolved to its owning room + live opening.
+  const selectedOpening = computed(() => {
+    const oid = opts.selectedOpeningId.value
+    if (!oid) return null
+    for (const room of opts.rooms.value) {
+      const o = (room.geometry.openings ?? []).find(x => x.id === oid)
+      if (o) return { room, opening: liveOpeningOf(room, o) }
+    }
+    return null
+  })
+
   watch(opts.rooms, (rooms) => {
-    if (!overlay.value) return
-    const room = rooms.find(r => r.id === overlay.value!.id)
-    if (!room || sameRect(room.geometry, overlay.value.geo)) overlay.value = null
+    if (overlay.value) {
+      const room = rooms.find(r => r.id === overlay.value!.id)
+      if (!room || sameRect(room.geometry, overlay.value.geo)) overlay.value = null
+    }
+    if (fixtureOverlay.value) {
+      const room = rooms.find(r => r.id === fixtureOverlay.value!.roomId)
+      const f = room?.geometry.fixtures?.find(x => x.id === fixtureOverlay.value!.fixtureId)
+      if (!f || sameFixture(f, fixtureOverlay.value.fixture)) fixtureOverlay.value = null
+    }
+    if (openingOverlay.value) {
+      const room = rooms.find(r => r.id === openingOverlay.value!.roomId)
+      const o = room?.geometry.openings?.find(x => x.id === openingOverlay.value!.openingId)
+      if (!o || o.offset === openingOverlay.value.opening.offset) openingOverlay.value = null
+    }
   }, { deep: true })
 
+  function liveFixtureOf(room: Room, f: Fixture): Fixture {
+    const o = fixtureOverlay.value
+    return o && o.roomId === room.id && o.fixtureId === f.id ? o.fixture : f
+  }
+
+  function liveOpeningOf(room: Room, op: Opening): Opening {
+    const o = openingOverlay.value
+    return o && o.roomId === room.id && o.openingId === op.id ? o.opening : op
+  }
+
+  // Room geometry for rendering: the move/resize overlay if active, with any
+  // in-flight fixture or opening drag substituted in so it tracks the pointer.
   function liveGeometry(room: Room): Geometry {
-    return overlay.value?.id === room.id ? overlay.value.geo : room.geometry
+    let geo = overlay.value?.id === room.id ? overlay.value.geo : room.geometry
+    const fo = fixtureOverlay.value
+    if (fo && fo.roomId === room.id) {
+      geo = { ...geo, fixtures: (geo.fixtures ?? []).map(f => f.id === fo.fixtureId ? fo.fixture : f) }
+    }
+    const oo = openingOverlay.value
+    if (oo && oo.roomId === room.id) {
+      geo = { ...geo, openings: (geo.openings ?? []).map(op => op.id === oo.openingId ? oo.opening : op) }
+    }
+    return geo
   }
 
   function toWorld(e: PointerEvent): Point {
@@ -80,6 +175,19 @@ export function useFloorplan(opts: UseFloorplanOptions) {
     catch { /* already released */ }
   }
 
+  // Topmost room (highest z, ties → later in the array) whose footprint covers a
+  // world point — used to drop a fixture into the room under the pointer.
+  function roomAt(pt: Point): Room | null {
+    let best: Room | null = null
+    let bestZ = -Infinity
+    opts.rooms.value.forEach((r, i) => {
+      if (!pointInRect(pt, footprintRect(liveGeometry(r)))) return
+      const z = (r.z ?? 0) + i / 1e6
+      if (z >= bestZ) { bestZ = z; best = r }
+    })
+    return best
+  }
+
   // Magnetize a free point (draw/resize/notch corner) to nearby edge lines.
   function snapPoint(pt: Point, targets: SnapTargets): Point {
     const sx = snapScalar(pt.x, targets.xs)
@@ -91,7 +199,23 @@ export function useFloorplan(opts: UseFloorplanOptions) {
   // Magnetize a translated room: snap whichever of its left/right (top/bottom)
   // edges is closest to a target line, shifting the whole room so it tucks flush
   // against another room — including into a notch corner.
+  // Does this footprint overlap another room? (interior overlap, not just touching)
+  function overlapsExisting(geo: Geometry, excludeId: string): boolean {
+    return opts.rooms.value.some((r) => {
+      if (r.id === excludeId) return false
+      const o = liveGeometry(r)
+      return geo.x < o.x + o.w && geo.x + geo.w > o.x && geo.y < o.y + o.h && geo.y + geo.h > o.y
+    })
+  }
+
   function applyMoveSnap(geo: Geometry, excludeId: string): Geometry {
+    // Once the room is dragged onto another, stop magnetizing its edges — let it
+    // overlap freely so the auto-cut can bite. Edge-snap only tucks rooms flush
+    // while they are still apart.
+    if (overlapsExisting(geo, excludeId)) {
+      snapGuides.value = { x: null, y: null }
+      return clampToWorld(geo)
+    }
     const t = edgeSnapTargets(opts.rooms.value, excludeId)
     const left = snapScalar(geo.x, t.xs)
     const right = snapScalar(geo.x + geo.w, t.xs)
@@ -130,6 +254,22 @@ export function useFloorplan(opts: UseFloorplanOptions) {
   }
   const scheduleNudgeCommit = useDebounceFn(commitPendingNudge, 400)
 
+  let pendingFixtureNudge: { roomId: string, fixture: Fixture } | null = null
+  function commitPendingFixtureNudge(): void {
+    const p = pendingFixtureNudge
+    pendingFixtureNudge = null
+    if (p) opts.onCommitFixture(p.roomId, p.fixture)
+  }
+  const scheduleFixtureNudgeCommit = useDebounceFn(commitPendingFixtureNudge, 400)
+
+  let pendingOpeningNudge: { roomId: string, opening: Opening } | null = null
+  function commitPendingOpeningNudge(): void {
+    const p = pendingOpeningNudge
+    pendingOpeningNudge = null
+    if (p) opts.onCommitOpening(p.roomId, p.opening)
+  }
+  const scheduleOpeningNudgeCommit = useDebounceFn(commitPendingOpeningNudge, 400)
+
   function anchorFor(handle: HandleId, g: Geometry): Point {
     return {
       x: handle === 'nw' || handle === 'sw' ? g.x + g.w : g.x,
@@ -137,12 +277,66 @@ export function useFloorplan(opts: UseFloorplanOptions) {
     }
   }
 
+  // ---- opening / fixture placement ----
+
+  function placeOpening(pt: Point): void {
+    const step = opts.gridStep.value
+    const width = opts.openingKind.value === 'window' ? DEFAULT_WINDOW_WIDTH : DEFAULT_DOOR_WIDTH
+    // Pick the topmost room whose wall the click lands on (z, then array order),
+    // consistent with the rest of the stacking model.
+    const hits = opts.rooms.value
+      .map((room, i) => {
+        const hit = openingHitTest(room.geometry, pt, width, step)
+        return hit ? { room, wall: hit.wall, offset: hit.offset, rank: (room.z ?? 0) + i / 1e6 } : null
+      })
+      .filter((h): h is { room: Room, wall: WallSide, offset: number, rank: number } => h !== null)
+    if (hits.length === 0) return
+    const best = hits.reduce((a, b) => (b.rank >= a.rank ? b : a))
+    opts.selectedId.value = best.room.id
+    opts.selectedFixtureId.value = null
+    opts.onAddOpening(best.room.id, opts.openingKind.value === 'window'
+      ? { kind: 'window', wall: best.wall, offset: best.offset, width, sill: DEFAULT_SILL, height: DEFAULT_WINDOW_HEIGHT }
+      : { kind: 'door', wall: best.wall, offset: best.offset, width, doorType: 'single', hinge: 'left', swing: 'in' })
+  }
+
+  function placeFixture(pt: Point): void {
+    const room = roomAt(pt)
+    if (!room) return
+    // Select the host room so the summary panel opens to tweak the new fixture.
+    opts.selectedId.value = room.id
+    const step = opts.gridStep.value
+    const spec = FIXTURE_CATALOG[opts.fixtureKind.value]
+    const draft: Fixture = {
+      id: 'draft',
+      kind: opts.fixtureKind.value,
+      x: snapTo(pt.x - room.geometry.x - spec.w / 2, step),
+      y: snapTo(pt.y - room.geometry.y - spec.h / 2, step),
+      w: spec.w,
+      h: spec.h,
+      rotation: 0,
+    }
+    const placed = { ...draft, ...clampFixtureToRoom(room.geometry, draft) }
+    opts.onAddFixture(room.id, {
+      kind: placed.kind,
+      x: placed.x,
+      y: placed.y,
+      w: placed.w,
+      h: placed.h,
+      rotation: 0,
+    })
+    opts.tool.value = 'select'
+  }
+
   let activePointerId: number | null = null
+  let didBringToFront = false // per-gesture: only bring a dragged room to front once it actually moves
 
   function onPointerDown(e: PointerEvent): void {
     if (e.button !== 0 || activePointerId !== null) return
     activePointerId = e.pointerId
+    didBringToFront = false
     commitPendingNudge()
+    commitPendingFixtureNudge()
+    commitPendingOpeningNudge()
     const pt = toWorld(e)
     const target = e.target as Element
 
@@ -152,27 +346,61 @@ export function useFloorplan(opts: UseFloorplanOptions) {
     else if (opts.tool.value === 'notch' && opts.selectedId.value) {
       mode.value = { kind: 'notching', anchor: pt, roomId: opts.selectedId.value }
     }
+    else if (opts.tool.value === 'opening') {
+      placeOpening(pt)
+    }
+    else if (opts.tool.value === 'fixture') {
+      placeFixture(pt)
+    }
     else {
       const handle = target.closest('[data-handle]')?.getAttribute('data-handle') as HandleId | null
+      const openingId = target.closest('[data-opening-id]')?.getAttribute('data-opening-id') ?? null
+      const fixtureId = target.closest('[data-fixture-id]')?.getAttribute('data-fixture-id') ?? null
       const roomEl = target.closest('[data-room-id]')
       const roomId = roomEl?.getAttribute('data-room-id') ?? null
 
       if (handle && selectedRoom.value) {
+        opts.selectedFixtureId.value = null
+        opts.selectedOpeningId.value = null
         const orig = liveGeometry(selectedRoom.value)
-        mode.value = {
-          kind: 'resizing',
-          id: selectedRoom.value.id,
-          anchor: anchorFor(handle, orig),
-          orig,
+        mode.value = { kind: 'resizing', id: selectedRoom.value.id, anchor: anchorFor(handle, orig), orig }
+      }
+      else if (openingId && roomId) {
+        // Select + drag an opening along its wall.
+        opts.selectedId.value = roomId
+        opts.selectedFixtureId.value = null
+        opts.selectedOpeningId.value = openingId
+        const room = opts.rooms.value.find(r => r.id === roomId)
+        const op = room?.geometry.openings?.find(o => o.id === openingId)
+        if (room && op) {
+          const ax = wallAxis(room.geometry, op.wall)
+          const along = ax.dx !== 0 ? pt.x - ax.ax : pt.y - ax.ay
+          mode.value = { kind: 'movingOpening', roomId, openingId, orig: op, grab: along - op.offset }
         }
+      }
+      else if (fixtureId && roomId) {
+        // Select + drag a fixture (its room is selected too so the panel shows).
+        opts.selectedId.value = roomId
+        opts.selectedFixtureId.value = fixtureId
+        opts.selectedOpeningId.value = null
+        const room = opts.rooms.value.find(r => r.id === roomId)
+        const fixture = room?.geometry.fixtures?.find(f => f.id === fixtureId)
+        if (room && fixture) mode.value = { kind: 'movingFixture', roomId, fixtureId, start: pt, orig: fixture }
       }
       else if (roomId) {
         opts.selectedId.value = roomId
+        opts.selectedFixtureId.value = null
+        opts.selectedOpeningId.value = null
+        // Bring-to-front happens on the first actual drag move, NOT on a plain
+        // click — so selecting a bitten room to inspect it doesn't pop it on top
+        // and erase the very overlap you're looking at.
         const room = opts.rooms.value.find(r => r.id === roomId)
         if (room) mode.value = { kind: 'moving', id: roomId, start: pt, orig: liveGeometry(room) }
       }
       else {
         opts.selectedId.value = null
+        opts.selectedFixtureId.value = null
+        opts.selectedOpeningId.value = null
       }
     }
     capturePointer(e)
@@ -187,8 +415,6 @@ export function useFloorplan(opts: UseFloorplanOptions) {
     if (m.kind === 'drawing') {
       const dragged = Math.max(Math.abs(pt.x - m.anchor.x), Math.abs(pt.y - m.anchor.y)) >= step
       if (dragged) {
-        // Snap the moving corner to any other room's edges so a new room can be
-        // drawn flush against / into the corner of an existing one.
         const sp = snapPoint(pt, edgeSnapTargets(opts.rooms.value, null))
         draftRect.value = rectFromCorners(m.anchor, sp, step)
       }
@@ -201,8 +427,6 @@ export function useFloorplan(opts: UseFloorplanOptions) {
       const dragged = Math.max(Math.abs(pt.x - m.anchor.x), Math.abs(pt.y - m.anchor.y)) >= step
       const room = opts.rooms.value.find(r => r.id === m.roomId)
       if (dragged && room) {
-        // Snap the notch corner to the room's own edges so the cut lands cleanly
-        // on a corner/edge (a clean L/T/U, not a floating interior hole).
         const g = liveGeometry(room)
         const sp = snapPoint(pt, { xs: [g.x, g.x + g.w], ys: [g.y, g.y + g.h] })
         notchDraft.value = rectFromCorners(m.anchor, sp, step)
@@ -214,11 +438,35 @@ export function useFloorplan(opts: UseFloorplanOptions) {
     }
     else if (m.kind === 'moving') {
       const moved = moveTo(m.orig, m.orig.x + (pt.x - m.start.x), m.orig.y + (pt.y - m.start.y), step)
-      overlay.value = { id: m.id, geo: applyMoveSnap(moved, m.id) }
+      const snapped = applyMoveSnap(moved, m.id)
+      // First real movement of this gesture → bring the room to the front so it
+      // bites overlaps (the page no-ops if it is already topmost).
+      if (!didBringToFront && !sameRect(snapped, m.orig)) {
+        opts.onBringToFront(m.id)
+        didBringToFront = true
+      }
+      overlay.value = { id: m.id, geo: snapped }
     }
     else if (m.kind === 'resizing') {
       const sp = snapPoint(pt, edgeSnapTargets(opts.rooms.value, m.id))
-      overlay.value = { id: m.id, geo: rectFromCorners(m.anchor, sp, step, m.orig.rotation) }
+      const r = rectFromCorners(m.anchor, sp, step, m.orig.rotation)
+      // Only the rectangle changes — keep walls/notches/openings/fixtures/basis
+      // (rectFromCorners returns a bare emptyGeometry that would strip them).
+      overlay.value = { id: m.id, geo: { ...m.orig, x: r.x, y: r.y, w: r.w, h: r.h } }
+    }
+    else if (m.kind === 'movingFixture') {
+      const room = opts.rooms.value.find(r => r.id === m.roomId)
+      if (room) {
+        const moved = moveFixtureTo(room.geometry, m.orig, m.orig.x + (pt.x - m.start.x), m.orig.y + (pt.y - m.start.y), step)
+        fixtureOverlay.value = { roomId: m.roomId, fixtureId: m.fixtureId, fixture: moved }
+      }
+    }
+    else if (m.kind === 'movingOpening') {
+      const room = opts.rooms.value.find(r => r.id === m.roomId)
+      if (room) {
+        const offset = openingOffsetAt(room.geometry, m.orig, pt, step, m.grab)
+        openingOverlay.value = { roomId: m.roomId, openingId: m.openingId, opening: { ...m.orig, offset } }
+      }
     }
   }
 
@@ -238,19 +486,23 @@ export function useFloorplan(opts: UseFloorplanOptions) {
       notchDraft.value = null
       const room = opts.rooms.value.find(r => r.id === m.roomId)
       if (draft && room && draft.w >= MIN_ROOM_SIZE && draft.h >= MIN_ROOM_SIZE) {
-        // Convert world coords to coords relative to room origin
         const geo = liveGeometry(room)
-        opts.onAddNotch(m.roomId, {
-          x: draft.x - geo.x,
-          y: draft.y - geo.y,
-          w: draft.w,
-          h: draft.h,
-        })
+        opts.onAddNotch(m.roomId, { x: draft.x - geo.x, y: draft.y - geo.y, w: draft.w, h: draft.h })
       }
       // Stay in notch mode so the user can draw multiple notches in sequence
     }
     else if (m.kind === 'moving' || m.kind === 'resizing') {
       commitOverlay(m.orig)
+    }
+    else if (m.kind === 'movingFixture') {
+      const o = fixtureOverlay.value
+      if (o && !sameFixture(o.fixture, m.orig)) opts.onCommitFixture(o.roomId, o.fixture)
+      else fixtureOverlay.value = null
+    }
+    else if (m.kind === 'movingOpening') {
+      const o = openingOverlay.value
+      if (o && o.opening.offset !== m.orig.offset) opts.onCommitOpening(o.roomId, o.opening)
+      else openingOverlay.value = null
     }
     mode.value = { kind: 'idle' }
     snapGuides.value = { x: null, y: null }
@@ -266,6 +518,21 @@ export function useFloorplan(opts: UseFloorplanOptions) {
     opts.onCommit(room.id, next)
   }
 
+  function rotateSelectedFixture(): void {
+    const sel = selectedFixture.value
+    if (!sel) return
+    const rotated0 = rotateFixture90(sel.fixture)
+    const rotated = { ...rotated0, ...clampFixtureToRoom(sel.room.geometry, rotated0) }
+    fixtureOverlay.value = { roomId: sel.room.id, fixtureId: rotated.id, fixture: rotated }
+    opts.onCommitFixture(sel.room.id, rotated)
+  }
+
+  // Rotate the active selection: a selected fixture takes priority over its room.
+  function rotateActive(): void {
+    if (opts.selectedFixtureId.value) rotateSelectedFixture()
+    else rotateSelected()
+  }
+
   function nudgeSelected(dx: number, dy: number): void {
     const room = selectedRoom.value
     if (!room) return
@@ -279,6 +546,37 @@ export function useFloorplan(opts: UseFloorplanOptions) {
     scheduleNudgeCommit()
   }
 
+  function nudgeSelectedFixture(dx: number, dy: number): void {
+    const sel = selectedFixture.value
+    if (!sel) return
+    const step = opts.gridStep.value
+    const f = moveFixtureTo(sel.room.geometry, sel.fixture, sel.fixture.x + dx * step, sel.fixture.y + dy * step, step)
+    fixtureOverlay.value = { roomId: sel.room.id, fixtureId: f.id, fixture: f }
+    pendingFixtureNudge = { roomId: sel.room.id, fixture: f }
+    scheduleFixtureNudgeCommit()
+  }
+
+  function nudgeSelectedOpening(dx: number, dy: number): void {
+    const sel = selectedOpening.value
+    if (!sel) return
+    const horizontal = sel.opening.wall === 'n' || sel.opening.wall === 's'
+    const delta = (horizontal ? dx : dy) * opts.gridStep.value
+    if (delta === 0) return // arrow is across the wall, not along it
+    const ax = wallAxis(sel.room.geometry, sel.opening.wall)
+    const offset = Math.min(Math.max(0, sel.opening.offset + delta), Math.max(0, ax.length - sel.opening.width))
+    const opening = { ...sel.opening, offset }
+    openingOverlay.value = { roomId: sel.room.id, openingId: opening.id, opening }
+    pendingOpeningNudge = { roomId: sel.room.id, opening }
+    scheduleOpeningNudgeCommit()
+  }
+
+  // Arrow keys nudge the active selection: opening (along its wall) > fixture > room.
+  function nudgeActive(dx: number, dy: number): void {
+    if (opts.selectedOpeningId.value) nudgeSelectedOpening(dx, dy)
+    else if (opts.selectedFixtureId.value) nudgeSelectedFixture(dx, dy)
+    else nudgeSelected(dx, dy)
+  }
+
   function onKeydown(e: KeyboardEvent): void {
     if (e.ctrlKey || e.metaKey || e.altKey) return
     const t = e.target
@@ -287,22 +585,45 @@ export function useFloorplan(opts: UseFloorplanOptions) {
     if (document.querySelector('.v-overlay--active')) return
 
     switch (e.key) {
-      case 'ArrowLeft': e.preventDefault(); nudgeSelected(-1, 0); break
-      case 'ArrowRight': e.preventDefault(); nudgeSelected(1, 0); break
-      case 'ArrowUp': e.preventDefault(); nudgeSelected(0, -1); break
-      case 'ArrowDown': e.preventDefault(); nudgeSelected(0, 1); break
+      case 'ArrowLeft': e.preventDefault(); nudgeActive(-1, 0); break
+      case 'ArrowRight': e.preventDefault(); nudgeActive(1, 0); break
+      case 'ArrowUp': e.preventDefault(); nudgeActive(0, -1); break
+      case 'ArrowDown': e.preventDefault(); nudgeActive(0, 1); break
       case 'r':
-      case 'R': rotateSelected(); break
+      case 'R':
+        if (!opts.selectedOpeningId.value) rotateActive() // openings don't rotate
+        break
       case 'Delete':
       case 'Backspace':
-        if (opts.selectedId.value) opts.onDeleteRequest(opts.selectedId.value)
+        if (opts.selectedOpeningId.value) {
+          const sel = selectedOpening.value
+          if (sel) opts.onDeleteOpening(sel.room.id, sel.opening.id)
+          opts.selectedOpeningId.value = null
+        }
+        else if (opts.selectedFixtureId.value) {
+          const sel = selectedFixture.value
+          if (sel) opts.onDeleteFixture(sel.room.id, sel.fixture.id)
+          opts.selectedFixtureId.value = null
+        }
+        else if (opts.selectedId.value) {
+          opts.onDeleteRequest(opts.selectedId.value)
+        }
         break
       case 'Escape':
-        if (mode.value.kind === 'drawing' || mode.value.kind === 'notching') {
+        if (['drawing', 'notching'].includes(mode.value.kind)) {
           draftRect.value = null
           notchDraft.value = null
           mode.value = { kind: 'idle' }
           if (opts.tool.value !== 'select') opts.tool.value = 'select'
+        }
+        else if (opts.tool.value === 'opening' || opts.tool.value === 'fixture') {
+          opts.tool.value = 'select'
+        }
+        else if (opts.selectedOpeningId.value) {
+          opts.selectedOpeningId.value = null
+        }
+        else if (opts.selectedFixtureId.value) {
+          opts.selectedFixtureId.value = null
         }
         else {
           opts.selectedId.value = null
@@ -319,10 +640,15 @@ export function useFloorplan(opts: UseFloorplanOptions) {
     draftRect,
     notchDraft,
     overlay,
+    fixtureOverlay,
+    openingOverlay,
     snapGuides,
     selectedRoom,
+    selectedFixture,
+    selectedOpening,
     liveGeometry,
     rotateSelected,
+    rotateActive,
     sanitize,
     onPointerDown,
     onPointerMove,

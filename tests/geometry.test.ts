@@ -1,11 +1,25 @@
 import { describe, expect, it } from 'vitest'
-import type { Geometry, Notch } from '../app/models'
+import type { Fixture, Geometry, Notch, Opening } from '../app/models'
 import {
+  basisWH,
   clampToWorld,
+  doorGeometry,
   edgeSnapTargets,
+  effectiveGeometry,
+  emptyGeometry,
+  fixtureWorldRect,
+  footprintFromBasis,
+  interiorRect,
+  interiorWH,
   MIN_ROOM_SIZE,
   moveTo,
   nudge,
+  lengthLabel,
+  openingGapRect,
+  openingHitRect,
+  openingHitTest,
+  openingMeasures,
+  openingOffsetAt,
   rectFromCorners,
   rectilinearRings,
   rotate90,
@@ -13,6 +27,9 @@ import {
   snapScalar,
   snapTo,
   sqFt,
+  usableSqFt,
+  wallBand,
+  wallSegments,
   WORLD,
 } from '../app/utils/geometry'
 
@@ -20,6 +37,10 @@ const g = (x: number, y: number, w: number, h: number, notches: Omit<Notch, 'id'
   x, y, w, h, rotation: 0,
   notches: notches.map((n, i) => ({ id: `n${i}`, ...n })),
 })
+
+// Full-shape geometry for the wall/opening/fixture suites.
+const gw = (over: Partial<Geometry> & { x: number, y: number, w: number, h: number }): Geometry =>
+  ({ ...emptyGeometry(over), ...over })
 
 describe('snapTo', () => {
   it('snaps to the nearest multiple of the step', () => {
@@ -202,5 +223,216 @@ describe('sameRect', () => {
     expect(sameRect(g, { ...g })).toBe(true)
     expect(sameRect(g, { ...g, rotation: 90 })).toBe(false)
     expect(sameRect(g, { ...g, x: 6 })).toBe(false)
+  })
+})
+
+describe('effectiveGeometry — non-destructive overlap auto-cut', () => {
+  const A = { id: 'a', z: 0, geometry: g(0, 0, 120, 120) }
+  const B = { id: 'b', z: 1, geometry: g(60, 60, 120, 120) }
+
+  it('bites the overlap out of the lower room as a relative notch', () => {
+    const eff = effectiveGeometry(A, [A, B])
+    expect(eff.notches.at(-1)).toMatchObject({ x: 60, y: 60, w: 60, h: 60 })
+    expect(sqFt(eff)).toBe(75) // (120·120 − 60·60)/144
+  })
+
+  it('leaves the higher (covering) room untouched', () => {
+    const eff = effectiveGeometry(B, [A, B])
+    expect(eff).toBe(B.geometry) // same reference, no cuts
+    expect(sqFt(eff)).toBe(100)
+  })
+
+  it('breaks z ties by stacking order (later in the array is on top)', () => {
+    const lo = { id: 'lo', z: 0, geometry: g(0, 0, 120, 120) }
+    const hi = { id: 'hi', z: 0, geometry: g(60, 0, 120, 120) }
+    expect(effectiveGeometry(lo, [lo, hi]).notches).toHaveLength(1)
+    expect(effectiveGeometry(hi, [lo, hi]).notches).toHaveLength(0)
+  })
+
+  it('flush-touching rooms cut nothing', () => {
+    const left = { id: 'l', z: 0, geometry: g(0, 0, 120, 120) }
+    const right = { id: 'r', z: 1, geometry: g(120, 0, 120, 120) }
+    expect(effectiveGeometry(left, [left, right])).toBe(left.geometry)
+  })
+
+  it('restores when the cover moves away (recompute is pure)', () => {
+    const moved = { ...B, geometry: g(300, 300, 120, 120) }
+    expect(effectiveGeometry(A, [A, moved])).toBe(A.geometry)
+  })
+})
+
+describe('walls / interior', () => {
+  const room = gw({ x: 0, y: 0, w: 144, h: 120, walls: { n: 6, s: 6, e: 4, w: 4 } })
+
+  it('insets the interior rect by each wall thickness', () => {
+    expect(interiorRect(room)).toEqual({ x: 4, y: 6, w: 136, h: 108 })
+    expect(interiorWH(room)).toEqual({ w: 136, h: 108 })
+  })
+
+  it('usable sqFt is the interior area; equals gross when wall-less', () => {
+    expect(usableSqFt(room)).toBe(Math.round((136 * 108) / 144)) // 102
+    expect(usableSqFt(g(0, 0, 144, 120))).toBe(sqFt(g(0, 0, 144, 120)))
+  })
+
+  it('subtracts overlap cuts from the interior too', () => {
+    const eff = { ...room, notches: [{ id: 'c', x: 100, y: 0, w: 44, h: 120 }] }
+    expect(usableSqFt(eff)).toBeLessThan(usableSqFt(room))
+  })
+})
+
+describe('wall bands & segments', () => {
+  it('a wall with no thickness yields no band', () => {
+    const room = gw({ x: 0, y: 0, w: 200, h: 100, walls: { n: 6, s: 0, e: 0, w: 0 } })
+    expect(wallBand(room, 'n')).toEqual({ x: 0, y: 0, w: 200, h: 6 })
+    expect(wallBand(room, 's')).toBeNull()
+  })
+
+  it('an opening splits its wall band into two solid pieces', () => {
+    const door: Opening = { id: 'd', kind: 'door', wall: 'n', offset: 100, width: 36 }
+    const room = gw({ x: 0, y: 0, w: 240, h: 120, walls: { n: 6, s: 0, e: 0, w: 0 }, openings: [door] })
+    expect(wallSegments(room)).toEqual([
+      { x: 0, y: 0, w: 100, h: 6 },
+      { x: 136, y: 0, w: 104, h: 6 },
+    ])
+  })
+
+  it('opening gap spans the wall thickness on the correct face', () => {
+    const room = gw({ x: 0, y: 0, w: 240, h: 120, walls: { n: 6, s: 8, e: 0, w: 0 } })
+    expect(openingGapRect(room, { id: 'n', kind: 'door', wall: 'n', offset: 100, width: 36 }))
+      .toEqual({ x: 100, y: 0, w: 36, h: 6 })
+    expect(openingGapRect(room, { id: 's', kind: 'door', wall: 's', offset: 100, width: 36 }))
+      .toEqual({ x: 100, y: 112, w: 36, h: 8 }) // y+h − thickness = 120−8
+  })
+})
+
+describe('opening move + measurement', () => {
+  const room = gw({ x: 0, y: 0, w: 240, h: 120, walls: { n: 6, s: 0, e: 0, w: 0 } })
+  const door: Opening = { id: 'd', kind: 'door', wall: 'n', offset: 100, width: 36 }
+
+  it('lengthLabel formats inches as feet-inches', () => {
+    expect(lengthLabel(30)).toBe('2\'6"')
+    expect(lengthLabel(24)).toBe('2\'')
+  })
+
+  it('openingOffsetAt projects, snaps and clamps onto the wall', () => {
+    expect(openingOffsetAt(room, door, { x: 120, y: 2 }, 6)).toBe(120)
+    expect(openingOffsetAt(room, door, { x: 9999, y: 2 }, 6)).toBe(240 - 36) // clamped to wall end
+    expect(openingOffsetAt(room, door, { x: 130, y: 2 }, 6, 10)).toBe(120) // grab offset honored
+  })
+
+  it('openingHitRect spans the opening width with an interior-biased band', () => {
+    const r = openingHitRect(room, door)
+    expect(r.x).toBe(100)
+    expect(r.w).toBe(36)
+    expect(r.h).toBe(6 + 16) // wall thickness + grab band
+    expect(r.y).toBe(-4) // small lip above the top edge, rest inside
+  })
+
+  it('openingMeasures returns the gap to each corner in feet-inches', () => {
+    const m = openingMeasures(room, door)
+    expect(m).toHaveLength(2)
+    expect(m[0]).toMatchObject({ x: 50, text: lengthLabel(100) }) // before gap mid
+    expect(m[1]).toMatchObject({ x: 188, text: lengthLabel(104) }) // after gap mid (240-100-36)
+  })
+
+  it('omits a measurement when the opening is flush to a corner', () => {
+    expect(openingMeasures(room, { ...door, offset: 0 })).toHaveLength(1)
+  })
+})
+
+describe('openingHitTest', () => {
+  const room = gw({ x: 0, y: 0, w: 240, h: 120 })
+
+  it('picks the nearest wall and centers a snapped, on-wall offset', () => {
+    expect(openingHitTest(room, { x: 120, y: 2 }, 36, 6)).toEqual({ wall: 'n', offset: 102 })
+    expect(openingHitTest(room, { x: 2, y: 60 }, 36, 6)).toEqual({ wall: 'w', offset: 42 })
+  })
+
+  it('keeps the opening fully on the wall near a corner', () => {
+    expect(openingHitTest(room, { x: 238, y: 2 }, 36, 6)?.offset).toBe(240 - 36)
+  })
+
+  it('returns null away from every edge', () => {
+    expect(openingHitTest(room, { x: 120, y: 60 }, 36, 6)).toBeNull()
+  })
+})
+
+describe('doorGeometry', () => {
+  it('places hinge, leaf tip and latch for a left-hinged inward door', () => {
+    const room = g(0, 0, 120, 120)
+    const d = doorGeometry(room, { id: 'd', kind: 'door', wall: 'n', offset: 0, width: 36, hinge: 'left', swing: 'in' })
+    expect(d.hinge).toEqual({ x: 0, y: 0 })
+    expect(d.latch).toEqual({ x: 36, y: 0 })
+    expect(d.open).toEqual({ x: 0, y: 36 }) // swings into the room (+y)
+    expect(d.radius).toBe(36)
+  })
+
+  it('swings outward away from the room', () => {
+    const room = g(0, 0, 120, 120)
+    const d = doorGeometry(room, { id: 'd', kind: 'door', wall: 'n', offset: 0, width: 36, hinge: 'left', swing: 'out' })
+    expect(d.open).toEqual({ x: 0, y: -36 })
+  })
+})
+
+describe('fixtureWorldRect', () => {
+  const room = g(10, 20, 200, 200)
+  it('offsets by room origin at rotation 0', () => {
+    const f: Fixture = { id: 'f', kind: 'tub', x: 5, y: 5, w: 60, h: 30, rotation: 0 }
+    expect(fixtureWorldRect(room, f)).toEqual({ x: 15, y: 25, w: 60, h: 30 })
+  })
+  it('swaps w/h about the center at 90°', () => {
+    const f: Fixture = { id: 'f', kind: 'tub', x: 5, y: 5, w: 60, h: 30, rotation: 90 }
+    expect(fixtureWorldRect(room, f)).toEqual({ x: 30, y: 10, w: 30, h: 60 })
+  })
+})
+
+describe('rotate90 — content remap', () => {
+  it('rotates walls n→e→s→w and swaps the footprint', () => {
+    const room = gw({ x: 0, y: 0, w: 120, h: 60, walls: { n: 4, s: 0, e: 0, w: 8 } })
+    const r = rotate90(room, 6)
+    expect([r.w, r.h]).toEqual([60, 120])
+    expect(r.walls).toEqual({ n: 8, e: 4, s: 0, w: 0 })
+  })
+
+  it('remaps openings onto their rotated wall', () => {
+    const room = gw({
+      x: 0,
+      y: 0,
+      w: 120,
+      h: 60,
+      openings: [
+        { id: 'a', kind: 'door', wall: 'n', offset: 10, width: 20 },
+        { id: 'b', kind: 'window', wall: 'e', offset: 5, width: 10 },
+      ],
+    })
+    const r = rotate90(room, 6)
+    expect(r.openings[0]).toMatchObject({ wall: 'e', offset: 10 })
+    expect(r.openings[1]).toMatchObject({ wall: 's', offset: 60 - (5 + 10) }) // newW=oldH=60
+  })
+
+  it('rotates fixtures about the room (world footprint swaps, center maps CW)', () => {
+    const f: Fixture = { id: 'f', kind: 'tub', x: 10, y: 5, w: 20, h: 10, rotation: 0 }
+    const room = gw({ x: 0, y: 0, w: 120, h: 60, fixtures: [f] })
+    const before = fixtureWorldRect(room, f)
+    const r = rotate90(room, 6)
+    const after = fixtureWorldRect(r, r.fixtures[0]!)
+    expect([after.w, after.h]).toEqual([before.h, before.w]) // world w/h swap
+    // local center (relative to room origin) maps (lx,ly) → (oldH − ly, lx), oldH = 60
+    const beforeLx = before.x - room.x + before.w / 2
+    const beforeLy = before.y - room.y + before.h / 2
+    expect(after.x - r.x + after.w / 2).toBe(60 - beforeLy)
+    expect(after.y - r.y + after.h / 2).toBe(beforeLx)
+  })
+})
+
+describe('dimension basis', () => {
+  const room = gw({ x: 0, y: 0, w: 144, h: 120, walls: { n: 4, s: 4, e: 6, w: 6 }, basis: 'interior' })
+  it('basisWH subtracts walls in interior basis', () => {
+    expect(basisWH(room)).toEqual({ w: 144 - 12, h: 120 - 8 })
+    expect(basisWH({ ...room, basis: 'exterior' })).toEqual({ w: 144, h: 120 })
+  })
+  it('footprintFromBasis adds the walls back for interior input', () => {
+    expect(footprintFromBasis(room, 100, 80)).toEqual({ w: 112, h: 88 })
+    expect(footprintFromBasis({ ...room, basis: 'exterior' }, 100, 80)).toEqual({ w: 100, h: 80 })
   })
 })

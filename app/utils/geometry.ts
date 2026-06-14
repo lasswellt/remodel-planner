@@ -1,4 +1,4 @@
-import type { Geometry } from '~/models'
+import type { Fixture, Geometry, Opening, WallSide } from '~/models'
 
 // All floorplan math lives here, pure and unit-tested. World units are inches:
 // the SVG viewBox is 1 unit = 1 inch, so geometry persists in real-world
@@ -7,6 +7,33 @@ export const WORLD = { w: 720, h: 480 } as const // 60ft x 40ft per floor
 export const DEFAULT_GRID_STEP = 6 // inches
 export const GRID_STEPS = [3, 6, 12] as const
 export const MIN_ROOM_SIZE = 12 // inches; a room can never collapse below this
+export const MIN_FIXTURE_SIZE = 6 // inches; smallest placeable fixture edge
+const MIN_OPENING_BAND = 5 // inches; legible opening marker on a wall-less edge
+
+const NO_WALLS = { n: 0, s: 0, e: 0, w: 0 } as const
+
+// A bare exterior-basis Geometry with no walls/notches/openings/fixtures —
+// the canonical constructor so every code path includes the schema's fields.
+export function emptyGeometry(rect: {
+  x: number
+  y: number
+  w: number
+  h: number
+  rotation?: number
+}): Geometry {
+  return {
+    x: rect.x,
+    y: rect.y,
+    w: rect.w,
+    h: rect.h,
+    rotation: rect.rotation ?? 0,
+    notches: [],
+    walls: { ...NO_WALLS },
+    basis: 'exterior',
+    openings: [],
+    fixtures: [],
+  }
+}
 
 export function snapTo(value: number, step: number): number {
   return Math.round(value / step) * step
@@ -38,14 +65,13 @@ export function rectFromCorners(
   const y0 = snapTo(Math.min(cy(a.y), cy(b.y)), step)
   const x1 = snapTo(Math.max(cx(a.x), cx(b.x)), step)
   const y1 = snapTo(Math.max(cy(a.y), cy(b.y)), step)
-  return clampToWorld({
+  return clampToWorld(emptyGeometry({
     x: x0,
     y: y0,
     w: Math.max(min, x1 - x0),
     h: Math.max(min, y1 - y0),
     rotation,
-    notches: [],
-  })
+  }))
 }
 
 export function moveTo(geo: Geometry, x: number, y: number, step: number): Geometry {
@@ -65,6 +91,11 @@ export function rotate90(geo: Geometry, step: number): Geometry {
   if (geo.h > WORLD.w || geo.w > WORLD.h) return geo
   const cx = geo.x + geo.w / 2
   const cy = geo.y + geo.h / 2
+  const oldH = geo.h
+  // Walls, notches, openings and fixtures rotate rigidly with the footprint so
+  // a door stays on its physical wall and a tub keeps its corner. Field access
+  // is defensive: in-flight / legacy objects may predate these fields.
+  const walls = geo.walls ?? NO_WALLS
   return clampToWorld({
     ...geo,
     x: snapTo(cx - geo.h / 2, step),
@@ -72,7 +103,39 @@ export function rotate90(geo: Geometry, step: number): Geometry {
     w: geo.h,
     h: geo.w,
     rotation: (geo.rotation + 90) % 360,
+    walls: { n: walls.w, e: walls.n, s: walls.e, w: walls.s },
+    notches: (geo.notches ?? []).map(n => ({
+      ...n,
+      x: oldH - (n.y + n.h),
+      y: n.x,
+      w: n.h,
+      h: n.w,
+    })),
+    openings: (geo.openings ?? []).map(op => rotateOpeningCW(op, oldH)),
+    // Map the fixture's CENTER under the CW rotation and bump its rotation; keep
+    // stored w/h as-is — fixtureWorldRect() does the w/h swap from the rotation,
+    // so swapping the stored values here too would cancel and leave it unrotated.
+    fixtures: (geo.fixtures ?? []).map((f) => {
+      const ncx = oldH - (f.y + f.h / 2) // CW: (lx,ly) → (oldH − ly, lx)
+      const ncy = f.x + f.w / 2
+      return { ...f, x: ncx - f.w / 2, y: ncy - f.h / 2, rotation: ((f.rotation ?? 0) + 90) % 360 }
+    }),
   })
+}
+
+// Opening remap under a 90° clockwise footprint rotation. n→e and s→w preserve
+// the along-wall offset; e→s and w→n reverse it (newW = oldH), and a reversed
+// direction flips the hinge so the leaf keeps swinging the same physical way.
+function rotateOpeningCW(op: Opening, oldH: number): Opening {
+  const newW = oldH
+  const flip = (h?: 'left' | 'right') =>
+    h === 'left' ? 'right' : h === 'right' ? 'left' : h
+  switch (op.wall) {
+    case 'n': return { ...op, wall: 'e', offset: op.offset }
+    case 'e': return { ...op, wall: 's', offset: newW - (op.offset + op.width), hinge: flip(op.hinge) }
+    case 's': return { ...op, wall: 'w', offset: op.offset }
+    case 'w': return { ...op, wall: 'n', offset: newW - (op.offset + op.width), hinge: flip(op.hinge) }
+  }
 }
 
 // Notch-aware floor area: the outer rect minus the (clipped, possibly
@@ -87,9 +150,19 @@ function inchesToFeetLabel(inches: number): string {
   return in_ === 0 ? `${ft}'` : `${ft}'${in_}"`
 }
 
-// e.g. 150" × 120" → "12'6\" × 10'"
+// e.g. 150 × 120 → "12'6\" × 10'"
+export function dimsLabelWH(w: number, h: number): string {
+  return `${inchesToFeetLabel(w)} × ${inchesToFeetLabel(h)}`
+}
+
+// Single length in feet-inches, e.g. 30 → "2'6\"".
+export function lengthLabel(inches: number): string {
+  return inchesToFeetLabel(inches)
+}
+
+// e.g. 150" × 120" → "12'6\" × 10'" (the footprint / exterior dimensions)
 export function dimsLabel(geo: Geometry): string {
-  return `${inchesToFeetLabel(geo.w)} × ${inchesToFeetLabel(geo.h)}`
+  return dimsLabelWH(geo.w, geo.h)
 }
 
 // Inches → decimal feet string for an input field (e.g. 150 → "12.5")
@@ -275,4 +348,359 @@ export function snapScalar(value: number, targets: number[], tol = SNAP_TOL): { 
     }
   }
   return { value: best, snapped }
+}
+
+// ---- non-destructive overlap auto-cut (stacking order) ----
+
+export interface Rect { x: number, y: number, w: number, h: number }
+
+export function footprintRect(geo: Geometry): Rect {
+  return { x: geo.x, y: geo.y, w: geo.w, h: geo.h }
+}
+
+// Overlap of two world rects, or null if they don't intersect (touching edges
+// don't count — a flush-tucked room cuts nothing).
+function rectIntersect(a: Rect, b: Rect): Rect | null {
+  const x0 = Math.max(a.x, b.x)
+  const y0 = Math.max(a.y, b.y)
+  const x1 = Math.min(a.x + a.w, b.x + b.w)
+  const y1 = Math.min(a.y + a.h, b.y + b.h)
+  if (x1 <= x0 || y1 <= y0) return null
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+}
+
+export interface StackRoom { id: string, z?: number, geometry: Geometry }
+
+// Precedence: a room with higher z (ties broken by later position in `all`) sits
+// on top. `effectiveGeometry` folds every higher room's overlap into THIS room
+// as extra notches (relative coords), so its path/area/labels recompute live as
+// rooms are dragged — and restore the instant the cover moves away. `all` must
+// be the rooms on the same floor (different floors never interact).
+export function effectiveGeometry(room: StackRoom, all: StackRoom[]): Geometry {
+  const i = all.findIndex(r => r.id === room.id)
+  const rz = room.z ?? 0
+  const fr = footprintRect(room.geometry)
+  const cuts = []
+  for (let j = 0; j < all.length; j++) {
+    const o = all[j]!
+    if (o.id === room.id) continue
+    const oz = o.z ?? 0
+    const higher = oz > rz || (oz === rz && j > i)
+    if (!higher) continue
+    const inter = rectIntersect(fr, footprintRect(o.geometry))
+    if (inter) {
+      cuts.push({ id: `ov:${o.id}`, x: inter.x - room.geometry.x, y: inter.y - room.geometry.y, w: inter.w, h: inter.h })
+    }
+  }
+  if (cuts.length === 0) return room.geometry
+  return { ...room.geometry, notches: [...(room.geometry.notches ?? []), ...cuts] }
+}
+
+// ---- walls / interior ----
+
+export function hasWalls(geo: Geometry): boolean {
+  const w = geo.walls ?? NO_WALLS
+  return w.n > 0 || w.s > 0 || w.e > 0 || w.w > 0
+}
+
+// The usable interior rect: the footprint inset by each wall's thickness.
+export function interiorRect(geo: Geometry): Rect {
+  const wl = geo.walls ?? NO_WALLS
+  return {
+    x: geo.x + wl.w,
+    y: geo.y + wl.n,
+    w: Math.max(0, geo.w - wl.w - wl.e),
+    h: Math.max(0, geo.h - wl.n - wl.s),
+  }
+}
+
+export function interiorWH(geo: Geometry): { w: number, h: number } {
+  const wl = geo.walls ?? NO_WALLS
+  return { w: Math.max(0, geo.w - wl.w - wl.e), h: Math.max(0, geo.h - wl.n - wl.s) }
+}
+
+// Geometry of the usable interior region (outer = interior rect, cuts re-based
+// to the interior origin). sqFt() of this is the finished floor area.
+export function interiorGeometry(geo: Geometry): Geometry {
+  if (!hasWalls(geo)) return geo
+  const ir = interiorRect(geo)
+  const wl = geo.walls ?? NO_WALLS
+  return {
+    ...geo,
+    x: ir.x,
+    y: ir.y,
+    w: ir.w,
+    h: ir.h,
+    walls: { ...NO_WALLS },
+    notches: (geo.notches ?? []).map(n => ({ ...n, x: n.x - wl.w, y: n.y - wl.n })),
+  }
+}
+
+// Usable (interior) floor area in sq ft; equals gross sqFt() when there are no
+// walls. Pass an already-effective geometry to account for overlap cuts too.
+export function usableSqFt(geo: Geometry): number {
+  return sqFt(interiorGeometry(geo))
+}
+
+// ---- wall bands & segments ----
+
+interface WallAxis {
+  ax: number, ay: number // start corner (offset 0)
+  dx: number, dy: number // unit direction along the wall
+  nx: number, ny: number // unit normal pointing into the interior
+  length: number
+  thickness: number
+}
+
+// The wall as an axis: start corner, along-wall direction, interior normal.
+export function wallAxis(geo: Geometry, side: WallSide): WallAxis {
+  const wl = geo.walls ?? NO_WALLS
+  const { x, y, w, h } = geo
+  switch (side) {
+    case 'n': return { ax: x, ay: y, dx: 1, dy: 0, nx: 0, ny: 1, length: w, thickness: wl.n }
+    case 's': return { ax: x, ay: y + h, dx: 1, dy: 0, nx: 0, ny: -1, length: w, thickness: wl.s }
+    case 'w': return { ax: x, ay: y, dx: 0, dy: 1, nx: 1, ny: 0, length: h, thickness: wl.w }
+    case 'e': return { ax: x + w, ay: y, dx: 0, dy: 1, nx: -1, ny: 0, length: h, thickness: wl.e }
+  }
+}
+
+// The solid wall band for one side as a world rect (thickness inward), or null
+// if that wall has no thickness. Corners belong to both adjoining bands (solid).
+export function wallBand(geo: Geometry, side: WallSide): Rect | null {
+  const wl = geo.walls ?? NO_WALLS
+  const { x, y, w, h } = geo
+  switch (side) {
+    case 'n': return wl.n > 0 ? { x, y, w, h: wl.n } : null
+    case 's': return wl.s > 0 ? { x, y: y + h - wl.s, w, h: wl.s } : null
+    case 'w': return wl.w > 0 ? { x, y, w: wl.w, h } : null
+    case 'e': return wl.e > 0 ? { x: x + w - wl.e, y, w: wl.e, h } : null
+  }
+}
+
+export const WALL_SIDES: WallSide[] = ['n', 's', 'e', 'w']
+
+// The gap an opening punches across its wall's thickness (world coords). When
+// the wall has no thickness the band collapses to the footprint edge line, so a
+// minimum visual band keeps the marker legible.
+export function openingGapRect(geo: Geometry, op: Opening): Rect {
+  const ax = wallAxis(geo, op.wall)
+  const t = Math.max(ax.thickness, MIN_OPENING_BAND)
+  // jamb-to-jamb extent along the wall
+  const sx = ax.ax + ax.dx * op.offset
+  const sy = ax.ay + ax.dy * op.offset
+  if (ax.dx !== 0) {
+    // horizontal wall (n/s): band thickness runs in y toward the interior
+    const y = ax.ny > 0 ? ax.ay : ax.ay - t
+    return { x: sx, y, w: op.width, h: t }
+  }
+  // vertical wall (w/e)
+  const x = ax.nx > 0 ? ax.ax : ax.ax - t
+  return { x, y: sy, w: t, h: op.width }
+}
+
+// Each wall band split by the openings on it → the drawable solid pieces.
+export function wallSegments(geo: Geometry): Rect[] {
+  const out: Rect[] = []
+  const openings = geo.openings ?? []
+  for (const side of WALL_SIDES) {
+    const band = wallBand(geo, side)
+    if (!band) continue
+    const horizontal = side === 'n' || side === 's'
+    // opening intervals along the wall axis (x for n/s, y for w/e)
+    const ax = wallAxis(geo, side)
+    const gaps = openings
+      .filter(op => op.wall === side)
+      .map(op => [ax.dx !== 0 ? ax.ax + op.offset : ax.ay + op.offset, op.width] as [number, number])
+      .map(([start, len]) => [start, start + len] as [number, number])
+      .sort((a, b) => a[0] - b[0])
+    // subtract gaps from the band's run
+    const runStart = horizontal ? band.x : band.y
+    const runEnd = horizontal ? band.x + band.w : band.y + band.h
+    let cursor = runStart
+    for (const [g0, g1] of gaps) {
+      const c0 = Math.max(runStart, g0)
+      const c1 = Math.min(runEnd, g1)
+      if (c1 <= cursor) continue
+      if (c0 > cursor) {
+        out.push(horizontal
+          ? { x: cursor, y: band.y, w: c0 - cursor, h: band.h }
+          : { x: band.x, y: cursor, w: band.w, h: c0 - cursor })
+      }
+      cursor = Math.max(cursor, c1)
+    }
+    if (cursor < runEnd) {
+      out.push(horizontal
+        ? { x: cursor, y: band.y, w: runEnd - cursor, h: band.h }
+        : { x: band.x, y: cursor, w: band.w, h: runEnd - cursor })
+    }
+  }
+  return out
+}
+
+// ---- opening placement hit-test ----
+
+// For a world point near a room edge, which wall it lands on and the snapped
+// offset for a new opening of `width` (kept fully on the wall). null if the
+// point isn't close enough to any edge.
+export function openingHitTest(
+  geo: Geometry,
+  pt: { x: number, y: number },
+  width: number,
+  step: number,
+  tol = 14,
+): { wall: WallSide, offset: number } | null {
+  const { x, y, w, h } = geo
+  const within = pt.x >= x - tol && pt.x <= x + w + tol && pt.y >= y - tol && pt.y <= y + h + tol
+  if (!within) return null
+  const dists: { side: WallSide, d: number, along: number, length: number }[] = [
+    { side: 'n', d: Math.abs(pt.y - y), along: pt.x - x, length: w },
+    { side: 's', d: Math.abs(pt.y - (y + h)), along: pt.x - x, length: w },
+    { side: 'w', d: Math.abs(pt.x - x), along: pt.y - y, length: h },
+    { side: 'e', d: Math.abs(pt.x - (x + w)), along: pt.y - y, length: h },
+  ]
+  const best = dists.filter(c => c.d <= tol).sort((a, b) => a.d - b.d)[0]
+  if (!best) return null
+  // center the opening on the click, snap, keep it fully on the wall
+  let offset = snapTo(best.along - width / 2, step)
+  offset = Math.min(Math.max(0, offset), Math.max(0, best.length - width))
+  return { wall: best.side, offset }
+}
+
+// ---- door symbol geometry ----
+
+export interface DoorGeometry {
+  hinge: Pt
+  open: Pt // leaf tip in the open position
+  latch: Pt // closed-leaf tip (on the wall, at the far jamb)
+  sweep: 0 | 1 // SVG arc sweep flag from `open` → `latch`
+  radius: number
+}
+
+// Hinge point, open-leaf tip and swing arc for a single door leaf. `whole` door
+// uses the full width; callers split a double door into two half-width leaves.
+export function doorGeometry(geo: Geometry, op: Opening, range?: { offset: number, width: number }): DoorGeometry {
+  const ax = wallAxis(geo, op.wall)
+  const offset = range?.offset ?? op.offset
+  const width = range?.width ?? op.width
+  // hinge on the start jamb (offset) for 'left', far jamb for 'right'
+  const left = (op.hinge ?? 'left') === 'left'
+  const hOff = left ? offset : offset + width
+  const lOff = left ? offset + width : offset
+  // anchor on the interior face for an inward swing, exterior face for outward
+  const swingIn = (op.swing ?? 'in') === 'in'
+  const t = Math.max(ax.thickness, 0)
+  const faceShift = swingIn ? t : 0 // interior face is `thickness` in from outer edge
+  const hinge = {
+    x: ax.ax + ax.dx * hOff + ax.nx * faceShift,
+    y: ax.ay + ax.dy * hOff + ax.ny * faceShift,
+  }
+  const latch = {
+    x: ax.ax + ax.dx * lOff + ax.nx * faceShift,
+    y: ax.ay + ax.dy * lOff + ax.ny * faceShift,
+  }
+  // perpendicular into the swing direction
+  const px = swingIn ? ax.nx : -ax.nx
+  const py = swingIn ? ax.ny : -ax.ny
+  const open = { x: hinge.x + px * width, y: hinge.y + py * width }
+  // sweep flag: sign of the cross product (open−hinge) × (latch−hinge)
+  const cross = (open.x - hinge.x) * (latch.y - hinge.y) - (open.y - hinge.y) * (latch.x - hinge.x)
+  return { hinge, open, latch, sweep: cross > 0 ? 1 : 0, radius: width }
+}
+
+// World rect covering an opening for pointer hit-testing / selection: jamb-to-
+// jamb along the wall × a grab band biased toward the interior (a small lip
+// outside the wall, the rest inside) so it's easy to grab without spilling
+// outside the plan.
+export function openingHitRect(geo: Geometry, op: Opening): Rect {
+  const ax = wallAxis(geo, op.wall)
+  const lip = 4
+  const band = Math.max(ax.thickness, 0) + 16
+  const sx = ax.ax + ax.dx * op.offset
+  const sy = ax.ay + ax.dy * op.offset
+  if (ax.dx !== 0) {
+    const y = ax.ny > 0 ? ax.ay - lip : ax.ay - band + lip
+    return { x: sx, y, w: op.width, h: band }
+  }
+  const x = ax.nx > 0 ? ax.ax - lip : ax.ax - band + lip
+  return { x, y: sy, w: band, h: op.width }
+}
+
+// Project a world point onto an opening's wall → the snapped, clamped offset that
+// keeps the opening fully on the wall. Used to drag an opening along its wall.
+export function openingOffsetAt(geo: Geometry, op: Opening, pt: { x: number, y: number }, step: number, grabAlong = 0): number {
+  const ax = wallAxis(geo, op.wall)
+  const along = ax.dx !== 0 ? pt.x - ax.ax : pt.y - ax.ay
+  const offset = snapTo(along - grabAlong, step)
+  return Math.min(Math.max(0, offset), Math.max(0, ax.length - op.width))
+}
+
+// Dimension labels for the gaps between an opening and its wall's two corners
+// (in feet-inches), positioned along the wall and inset toward the interior.
+export function openingMeasures(geo: Geometry, op: Opening): { x: number, y: number, text: string }[] {
+  const ax = wallAxis(geo, op.wall)
+  const before = op.offset
+  const after = ax.length - op.offset - op.width
+  const inset = Math.max(ax.thickness, 0) + 12
+  const mk = (start: number, len: number) => {
+    const mid = start + len / 2
+    return {
+      x: ax.ax + ax.dx * mid + ax.nx * inset,
+      y: ax.ay + ax.dy * mid + ax.ny * inset,
+      text: lengthLabel(Math.round(len)),
+    }
+  }
+  const out: { x: number, y: number, text: string }[] = []
+  if (before > 0.5) out.push(mk(0, before))
+  if (after > 0.5) out.push(mk(op.offset + op.width, after))
+  return out
+}
+
+// ---- fixtures ----
+
+// World rect of a fixture, honoring its 0/90/180/270 rotation about its center.
+export function fixtureWorldRect(geo: Geometry, f: Fixture): Rect {
+  const cx = geo.x + f.x + f.w / 2
+  const cy = geo.y + f.y + f.h / 2
+  const rot = (((f.rotation ?? 0) % 360) + 360) % 360
+  const [w, h] = rot === 90 || rot === 270 ? [f.h, f.w] : [f.w, f.h]
+  return { x: cx - w / 2, y: cy - h / 2, w, h }
+}
+
+// Keep a fixture's (x, y) so its rotated footprint stays inside the room.
+export function clampFixtureToRoom(geo: Geometry, f: Fixture): { x: number, y: number } {
+  const r = fixtureWorldRect(geo, f) // current rotated extent in world coords
+  const relX = r.x - geo.x // top-left of rotated extent, relative to room
+  const relY = r.y - geo.y
+  const maxX = Math.max(0, geo.w - r.w)
+  const maxY = Math.max(0, geo.h - r.h)
+  const clampedRelX = Math.min(Math.max(0, relX), maxX)
+  const clampedRelY = Math.min(Math.max(0, relY), maxY)
+  // shift the stored (unrotated) origin by the same delta the rotated box moved
+  return { x: f.x + (clampedRelX - relX), y: f.y + (clampedRelY - relY) }
+}
+
+export function moveFixtureTo(geo: Geometry, f: Fixture, relX: number, relY: number, step: number): Fixture {
+  const moved = { ...f, x: snapTo(relX, step), y: snapTo(relY, step) }
+  return { ...moved, ...clampFixtureToRoom(geo, moved) }
+}
+
+export function rotateFixture90(f: Fixture): Fixture {
+  return { ...f, rotation: (((f.rotation ?? 0) + 90) % 360) }
+}
+
+// ---- dimension basis ----
+
+// The W/H to show & edit for the geometry's current basis (interior subtracts
+// the side walls; exterior is the raw footprint).
+export function basisWH(geo: Geometry): { w: number, h: number } {
+  return (geo.basis ?? 'exterior') === 'interior' ? interiorWH(geo) : { w: geo.w, h: geo.h }
+}
+
+// Convert basis-space W/H the user entered into the stored exterior footprint.
+export function footprintFromBasis(geo: Geometry, w: number, h: number): { w: number, h: number } {
+  if ((geo.basis ?? 'exterior') === 'interior') {
+    const wl = geo.walls ?? NO_WALLS
+    return { w: w + wl.w + wl.e, h: h + wl.n + wl.s }
+  }
+  return { w, h }
 }

@@ -1,15 +1,19 @@
 <script setup lang="ts">
-import type { Geometry, Room } from '~/models'
-import type { FloorplanTool, HandleId } from '~/composables/useFloorplan'
+import type { Fixture, FixtureKind, Geometry, Opening, OpeningKind, Room } from '~/models'
+import type { DimDetail, FloorplanTool, HandleId } from '~/composables/useFloorplan'
 import { GRID_MAJOR, GRID_MINOR, PLAN_BG } from '~/utils/floorplan-style'
-import { WORLD } from '~/utils/geometry'
+import { effectiveGeometry, WORLD } from '~/utils/geometry'
 
-// The SVG floorplan surface: grid, room rects, draw preview, resize handles,
-// and the ghost-room empty state (UX10). All gesture logic lives in
-// useFloorplan; persistence is emitted upward.
+// The SVG floorplan surface: grid, room rects (with live overlap auto-cut),
+// walls/openings/fixtures, draw preview, resize handles, and the ghost-room
+// empty state (UX10). All gesture logic lives in useFloorplan; persistence is
+// emitted upward.
 const props = defineProps<{
   rooms: Room[]
   gridStep: number
+  openingKind: OpeningKind
+  fixtureKind: FixtureKind
+  dimDetail: DimDetail
 }>()
 
 const emit = defineEmits<{
@@ -17,9 +21,18 @@ const emit = defineEmits<{
   commit: [id: string, geometry: Geometry]
   deleteRequest: [id: string]
   addNotch: [roomId: string, notch: { x: number, y: number, w: number, h: number }]
+  bringToFront: [id: string]
+  addOpening: [roomId: string, opening: Omit<Opening, 'id'>]
+  commitOpening: [roomId: string, opening: Opening]
+  deleteOpening: [roomId: string, openingId: string]
+  addFixture: [roomId: string, fixture: Omit<Fixture, 'id'>]
+  commitFixture: [roomId: string, fixture: Fixture]
+  deleteFixture: [roomId: string, fixtureId: string]
 }>()
 
 const selectedId = defineModel<string | null>('selected', { default: null })
+const selectedFixtureId = defineModel<string | null>('selectedFixture', { default: null })
+const selectedOpeningId = defineModel<string | null>('selectedOpening', { default: null })
 const tool = defineModel<FloorplanTool>('tool', { default: 'select' })
 
 const svgEl = ref<SVGSVGElement | null>(null)
@@ -32,24 +45,68 @@ const fp = useFloorplan({
   tool,
   gridStep: toRef(props, 'gridStep'),
   selectedId,
+  selectedFixtureId,
+  selectedOpeningId,
+  openingKind: toRef(props, 'openingKind'),
+  fixtureKind: toRef(props, 'fixtureKind'),
   onCreate: geo => emit('create', geo),
   onCommit: (id, geo) => emit('commit', id, geo),
   onDeleteRequest: id => emit('deleteRequest', id),
   onAddNotch: (roomId, notch) => emit('addNotch', roomId, notch),
+  onBringToFront: id => emit('bringToFront', id),
+  onAddOpening: (roomId, opening) => emit('addOpening', roomId, opening),
+  onCommitOpening: (roomId, opening) => emit('commitOpening', roomId, opening),
+  onDeleteOpening: (roomId, openingId) => emit('deleteOpening', roomId, openingId),
+  onAddFixture: (roomId, fixture) => emit('addFixture', roomId, fixture),
+  onCommitFixture: (roomId, fixture) => emit('commitFixture', roomId, fixture),
+  onDeleteFixture: (roomId, fixtureId) => emit('deleteFixture', roomId, fixtureId),
 })
 
 // Keyboard works while the plan is on screen: arrows nudge, R rotates, Del
 // removes (confirmed upstream), Esc deselects / cancels drawing.
 useEventListener(window, 'keydown', fp.onKeydown)
 
-// The summary panel's rotate button routes through here so the rotation is
-// computed from the live overlay (including any pending nudge).
-defineExpose({ rotateSelected: fp.rotateSelected })
+// The summary panel's footer rotate button rotates the ROOM (the fixture editor
+// has its own rotate); routed here so it includes any in-flight overlay/nudge.
+defineExpose({ rotateRoom: fp.rotateSelected })
+
+// Live stacking snapshot: each room with its live geometry and effective z. The
+// room currently being dragged is forced topmost so it bites overlaps the
+// instant it is grabbed, without waiting for the async bring-to-front write.
+const liveStack = computed(() => {
+  const movingId = fp.overlay.value?.id ?? null
+  return props.rooms.map((room, i) => ({
+    room,
+    i,
+    z: room.id === movingId ? Number.MAX_SAFE_INTEGER : (room.z ?? 0),
+    geometry: fp.liveGeometry(room),
+  }))
+})
+
+// Effective geometry per room: footprint with higher rooms' overlaps bitten out
+// (non-destructive), recomputed live as rooms drag. `rooms` is one floor.
+const effGeo = computed<Record<string, Geometry>>(() => {
+  const live = liveStack.value.map(s => ({ id: s.room.id, z: s.z, geometry: s.geometry }))
+  const map: Record<string, Geometry> = {}
+  for (const r of live) map[r.id] = effectiveGeometry(r, live)
+  return map
+})
+function geoFor(room: Room): Geometry {
+  return effGeo.value[room.id] ?? fp.liveGeometry(room)
+}
+
+// Paint rooms in stacking order (z asc, ties by array order) so a higher room —
+// the one that bites the overlap — is drawn on top of the room it covers.
+const roomsByZ = computed(() =>
+  [...liveStack.value].sort((a, b) => (a.z - b.z) || (a.i - b.i)).map(s => s.room),
+)
 
 const HANDLE = 12
+// Resize handles target the selected room; hidden while a fixture is selected
+// so its drag/rotate isn't crowded by room handles.
 const handles = computed<{ id: HandleId, x: number, y: number, cursor: string }[]>(() => {
   const room = fp.selectedRoom.value
-  if (!room) return []
+  if (!room || selectedFixtureId.value) return []
   const g = fp.liveGeometry(room)
   return [
     { id: 'nw', x: g.x, y: g.y, cursor: 'nwse-resize' },
@@ -67,7 +124,11 @@ const ghost = computed(() => props.rooms.length === 0)
   <svg
     ref="svgEl"
     class="fp-canvas"
-    :class="{ 'fp-canvas--draw': tool === 'draw', 'fp-canvas--notch': tool === 'notch' }"
+    :class="{
+      'fp-canvas--draw': tool === 'draw',
+      'fp-canvas--notch': tool === 'notch',
+      'fp-canvas--place': tool === 'opening' || tool === 'fixture',
+    }"
     :viewBox="`0 0 ${WORLD.w} ${WORLD.h}`"
     role="application"
     aria-label="Floorplan canvas. Use the draw tool to add rooms; arrow keys nudge the selected room."
@@ -90,13 +151,16 @@ const ghost = computed(() => props.rooms.length === 0)
     <rect :width="WORLD.w" :height="WORLD.h" fill="url(#fp-grid-major)" />
 
     <FloorplanRoomRect
-      v-for="room in rooms"
+      v-for="room in roomsByZ"
       :key="room.id"
       :room="room"
-      :geometry="fp.liveGeometry(room)"
+      :geometry="geoFor(room)"
       :progress="rollup.byRoom(room.id)"
       :over-budget="budget.overBudgetRoomIds.value.has(room.id)"
       :selected="room.id === selectedId"
+      :selected-fixture-id="selectedFixtureId"
+      :selected-opening-id="selectedOpeningId"
+      :dim-detail="dimDetail"
     />
 
     <!-- Draw preview -->
@@ -212,7 +276,10 @@ const ghost = computed(() => props.rooms.length === 0)
 .fp-canvas--draw,
 .fp-canvas--draw :deep(.fp-room),
 .fp-canvas--notch,
-.fp-canvas--notch :deep(.fp-room) {
+.fp-canvas--notch :deep(.fp-room),
+.fp-canvas--place,
+.fp-canvas--place :deep(.fp-room),
+.fp-canvas--place :deep(.fp-fixture) {
   cursor: crosshair;
 }
 .fp-ghost {
