@@ -46,3 +46,8 @@ serviceAccount*.json
 
 # Local build/phase state (not for the repo)
 .remodel/
+
+# Local screenshot/test artifacts (browser-driven verification)
+/*.png
+!public/**
+.playwright-mcp/
