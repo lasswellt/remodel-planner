@@ -325,10 +325,12 @@ export function useFloorplan(opts: UseFloorplanOptions) {
   }
 
   let activePointerId: number | null = null
+  let didBringToFront = false // per-gesture: only bring a dragged room to front once it actually moves
 
   function onPointerDown(e: PointerEvent): void {
     if (e.button !== 0 || activePointerId !== null) return
     activePointerId = e.pointerId
+    didBringToFront = false
     commitPendingNudge()
     commitPendingFixtureNudge()
     commitPendingOpeningNudge()
@@ -386,9 +388,9 @@ export function useFloorplan(opts: UseFloorplanOptions) {
         opts.selectedId.value = roomId
         opts.selectedFixtureId.value = null
         opts.selectedOpeningId.value = null
-        // Grabbing a room brings it to the front so it bites overlaps, not the
-        // reverse (the page no-ops if it is already on top).
-        opts.onBringToFront(roomId)
+        // Bring-to-front happens on the first actual drag move, NOT on a plain
+        // click — so selecting a bitten room to inspect it doesn't pop it on top
+        // and erase the very overlap you're looking at.
         const room = opts.rooms.value.find(r => r.id === roomId)
         if (room) mode.value = { kind: 'moving', id: roomId, start: pt, orig: liveGeometry(room) }
       }
@@ -433,7 +435,14 @@ export function useFloorplan(opts: UseFloorplanOptions) {
     }
     else if (m.kind === 'moving') {
       const moved = moveTo(m.orig, m.orig.x + (pt.x - m.start.x), m.orig.y + (pt.y - m.start.y), step)
-      overlay.value = { id: m.id, geo: applyMoveSnap(moved, m.id) }
+      const snapped = applyMoveSnap(moved, m.id)
+      // First real movement of this gesture → bring the room to the front so it
+      // bites overlaps (the page no-ops if it is already topmost).
+      if (!didBringToFront && !sameRect(snapped, m.orig)) {
+        opts.onBringToFront(m.id)
+        didBringToFront = true
+      }
+      overlay.value = { id: m.id, geo: snapped }
     }
     else if (m.kind === 'resizing') {
       const sp = snapPoint(pt, edgeSnapTargets(opts.rooms.value, m.id))
