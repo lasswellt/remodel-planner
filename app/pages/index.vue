@@ -117,12 +117,15 @@ function onDeleteNotch(roomId: string, notchId: string) {
   })
 }
 
-// Grabbing a room brings it to the front so it bites overlaps; no-op when it is
-// already the topmost (avoids a redundant write on every drag).
+// Dragging a room brings it strictly to the front so it bites overlaps. Compare
+// against the OTHER rooms (not including this one) and bump on a tie too —
+// otherwise a room tied for the top z loses the z-tiebreak to array order and
+// gets bitten by the room it was dropped on. No-op when already the unique top.
 function onBringToFront(id: string) {
-  const maxZ = Math.max(0, ...roomsStore.rooms.map(r => r.z ?? 0))
   const room = roomsStore.roomById[id]
-  if (room && (room.z ?? 0) < maxZ) roomsStore.updateRoom(id, { z: maxZ + 1 })
+  if (!room) return
+  const maxOther = Math.max(0, ...roomsStore.rooms.filter(r => r.id !== id).map(r => r.z ?? 0))
+  if ((room.z ?? 0) <= maxOther) roomsStore.updateRoom(id, { z: maxOther + 1 })
 }
 
 // --- openings (doors / windows) ---
