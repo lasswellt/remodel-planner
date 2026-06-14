@@ -34,7 +34,20 @@ export const useProjectBudget = createSharedComposable(() => {
   )
   const lines = useCollection<BudgetLine>(source, { ssrKey: 'budget-lines' })
 
-  const linesFor = (roomId: string) => lines.value.filter(l => l.roomId === roomId)
+  // Bucket lines by room once per data change; linesFor/byRoom/overBudgetRoomIds
+  // all read this Map instead of each re-filtering the full line list per room
+  // (the budget page rendered one full scan per room, O(rooms × lines)).
+  const linesByRoom = computed(() => {
+    const m = new Map<string, BudgetLine[]>()
+    for (const l of lines.value) {
+      const g = m.get(l.roomId)
+      if (g) g.push(l)
+      else m.set(l.roomId, [l])
+    }
+    return m
+  })
+
+  const linesFor = (roomId: string) => linesByRoom.value.get(roomId) ?? []
   const byRoom = (roomId: string) => roomBudget(linesFor(roomId))
 
   const project = computed(() => {
@@ -58,14 +71,8 @@ export const useProjectBudget = createSharedComposable(() => {
   const byRoomEstimates = (roomIds: string[]) => estimateByRoom(lines.value, roomIds)
 
   const overBudgetRoomIds = computed(() => {
-    const grouped = new Map<string, BudgetLine[]>()
-    for (const l of lines.value) {
-      const g = grouped.get(l.roomId)
-      if (g) g.push(l)
-      else grouped.set(l.roomId, [l])
-    }
     const ids = new Set<string>()
-    for (const [roomId, ls] of grouped) {
+    for (const [roomId, ls] of linesByRoom.value) {
       if (roomBudget(ls).overBudget) ids.add(roomId)
     }
     return ids

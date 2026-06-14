@@ -8,7 +8,7 @@ import {
   nextOpenTask,
   phaseProgress,
   projectProgress,
-  roomProgress,
+  roomProgressMap,
 } from '~/utils/rollup'
 import { useProjectStore } from '~/stores/project'
 
@@ -43,8 +43,14 @@ export const useRollup = createSharedComposable(() => {
     projectProgress(checklist.value, tasks.value),
   )
 
+  // One memoized pass feeds every per-room ring (floorplan v-for, room cards,
+  // panels). byRoom is an O(1) lookup so the floorplan's room loop no longer
+  // re-scans the whole project per room on each render/drag frame.
+  const progressByRoom = computed(() => roomProgressMap(checklist.value, tasks.value))
+  const EMPTY_PROGRESS: Progress = { done: 0, total: 0, pct: 0, complete: false }
+
   const byRoom = (roomId: string): Progress =>
-    roomProgress(roomId, checklist.value, tasks.value)
+    progressByRoom.value.get(roomId) ?? EMPTY_PROGRESS
 
   const byPhase = computed(() => phaseProgress(tasks.value))
 

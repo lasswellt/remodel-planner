@@ -14,8 +14,18 @@ const tasksApi = useProjectTasks()
 const ops = useTaskOps()
 const roomsStore = useRoomsStore()
 
-const byColumn = (status: TaskStatus) =>
-  props.tasks.filter(t => columnFor(t.status) === status)
+// Group tasks into their columns in a single pass, memoized until props.tasks
+// changes. The template reads each column 3x (count chip, v-for, empty check);
+// a plain filter ran 9 full scans per render and churned array identity on
+// every drag-over. byColumn() is now an O(1) lookup with stable identity.
+const grouped = computed(() => {
+  const m = Object.fromEntries(
+    BOARD_COLUMNS.map(c => [c.status, [] as Task[]]),
+  ) as Record<TaskStatus, Task[]>
+  for (const t of props.tasks) (m[columnFor(t.status)] ??= []).push(t)
+  return m
+})
+const byColumn = (status: TaskStatus) => grouped.value[status] ?? []
 
 const dragged = ref<Task | null>(null)
 const dragOverCol = ref<TaskStatus | null>(null)

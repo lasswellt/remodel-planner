@@ -55,6 +55,28 @@ export function roomProgress(
   return progress(done, total)
 }
 
+// All per-room progress in ONE pass over checklist+tasks (O(checklist+tasks)),
+// so callers rendering every room don't re-scan both full arrays per room per
+// frame. byRoom() becomes an O(1) Map lookup; recomputes only when the
+// underlying collections change, not on every reactive tick (e.g. drag frames).
+export function roomProgressMap(
+  checklist: ChecklistLike[],
+  tasks: TaskLike[],
+): Map<string, Progress> {
+  const acc = new Map<string, { done: number, total: number }>()
+  const bump = (roomId: string, done: boolean) => {
+    let e = acc.get(roomId)
+    if (!e) { e = { done: 0, total: 0 }; acc.set(roomId, e) }
+    e.total++
+    if (done) e.done++
+  }
+  for (const item of checklist) bump(item.roomId, item.done)
+  for (const task of tasks) bump(task.roomId, task.status === 'done')
+  const out = new Map<string, Progress>()
+  for (const [roomId, { done, total }] of acc) out.set(roomId, progress(done, total))
+  return out
+}
+
 export function projectProgress(
   checklist: ChecklistLike[],
   tasks: TaskLike[],
