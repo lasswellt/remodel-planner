@@ -5,8 +5,10 @@ import { useProjectStore } from '~/stores/project'
 
 // Phase 11 inspiration gallery, image-first (UX11), seeded from the researched
 // index (UX10) and extendable by URL. Psychology tags on each card cross-link
-// into the research page.
+// into the research page. Two views: curated ideas by room TYPE, and a by-ROOM
+// view that pulls in each room's shopping list alongside its pinned ideas.
 const projectStore = useProjectStore()
+const view = ref<'type' | 'room'>('type')
 const roomType = ref<RoomType>('kitchen')
 </script>
 
@@ -27,7 +29,12 @@ const roomType = ref<RoomType>('kitchen')
     <template v-else>
       <div class="d-flex flex-wrap align-center ga-3 mb-4">
         <h1 class="text-h6">Inspiration</h1>
+        <v-btn-toggle v-model="view" mandatory density="comfortable" variant="outlined" divided>
+          <v-btn value="type" prepend-icon="mdi-shape-outline" size="small" class="text-none">By room type</v-btn>
+          <v-btn value="room" prepend-icon="mdi-floor-plan" size="small" class="text-none">By room</v-btn>
+        </v-btn-toggle>
         <v-select
+          v-if="view === 'type'"
           v-model="roomType"
           :items="ROOM_TYPE_OPTIONS"
           label="Room type"
@@ -41,7 +48,8 @@ const roomType = ref<RoomType>('kitchen')
         </span>
       </div>
 
-      <InspirationGallery :room-type="roomType" />
+      <InspirationGallery v-if="view === 'type'" :room-type="roomType" />
+      <InspirationByRoom v-else />
     </template>
   </div>
 </template>
