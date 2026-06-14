@@ -38,9 +38,13 @@ async function signInWithGoogle() {
 <template>
   <v-card class="pa-2" max-width="420" width="100%" elevation="3" rounded="lg">
     <v-card-item class="text-center pt-8">
-      <v-icon icon="mdi-floor-plan" size="48" color="primary" class="mb-2" />
-      <v-card-title class="text-h5">Remodel Planner</v-card-title>
-      <v-card-subtitle>Plan your remodel, room by room.</v-card-subtitle>
+      <div class="d-flex justify-center mb-3">
+        <AppLogo :size="56" />
+      </div>
+      <v-card-title class="text-h4 pl-wordmark">Punchlist</v-card-title>
+      <v-card-subtitle style="white-space: normal; line-height: 1.4">
+        Plan your remodel, room by room — from demo to done.
+      </v-card-subtitle>
     </v-card-item>
 
     <v-card-text class="pt-4">

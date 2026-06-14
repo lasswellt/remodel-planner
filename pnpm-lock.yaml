@@ -39,8 +39,8 @@ importers:
         specifier: ~4.4.3
         version: 4.4.3
     devDependencies:
-      '@mdi/font':
-        specifier: ~7.4.47
+      '@mdi/js':
+        specifier: 7.4.47
         version: 7.4.47
       '@nuxt/eslint':
         specifier: ~1.9.0
@@ -1730,8 +1730,8 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
-  '@mdi/font@7.4.47':
-    resolution: {integrity: sha512-43MtGpd585SNzHZPcYowu/84Vz2a2g31TvPMTm9uTiCSWzaheQySUcSyUH/46fPnuPQWof2yd0pGBtzee/IQWw==}
+  '@mdi/js@7.4.47':
+    resolution: {integrity: sha512-KPnNOtm5i2pMabqZxpUz7iQf+mfrYZyKCZ8QNz85czgEt7cuHcGorWfdzUMWYA0SD+a6Hn4FmJ+YhzzzjkTZrQ==}
 
   '@modelcontextprotocol/sdk@1.29.0':
     resolution: {integrity: sha512-zo37mZA9hJWpULgkRpowewez1y6ML5GsXJPY8FI0tBBCd77HEvza4jDqRKOXgHNn867PVGCyTdzqpz0izu5ZjQ==}
@@ -9550,7 +9550,7 @@ snapshots:
       - encoding
       - supports-color
 
-  '@mdi/font@7.4.47': {}
+  '@mdi/js@7.4.47': {}
 
   '@modelcontextprotocol/sdk@1.29.0(zod@3.25.76)':
     dependencies:

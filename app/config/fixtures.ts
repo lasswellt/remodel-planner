@@ -17,7 +17,7 @@ export const FIXTURE_CATALOG: Record<FixtureKind, FixtureSpec> = {
   'tub': { label: 'Tub', w: 60, h: 30, icon: 'mdi-bathtub-outline' },
   'shower': { label: 'Shower', w: 36, h: 36, icon: 'mdi-shower' },
   'toilet': { label: 'Toilet', w: 20, h: 28, icon: 'mdi-toilet' },
-  'sink': { label: 'Sink', w: 24, h: 20, icon: 'mdi-sink' },
+  'sink': { label: 'Sink', w: 24, h: 20, icon: 'mdi-faucet' },
   'vanity': { label: 'Vanity', w: 36, h: 21, icon: 'mdi-countertop-outline' },
   'fridge': { label: 'Fridge', w: 36, h: 33, icon: 'mdi-fridge-outline' },
   'range': { label: 'Range', w: 30, h: 25, icon: 'mdi-stove' },

@@ -37,14 +37,16 @@ function toggleTheme() {
 </script>
 
 <template>
-  <v-app>
-    <v-app-bar :elevation="1" color="surface">
+  <v-app class="app-shell">
+    <v-app-bar :elevation="2" color="primary" class="app-bar">
       <v-app-bar-nav-icon
         :icon="mobile ? 'mdi-menu' : (rail ? 'mdi-chevron-right' : 'mdi-chevron-left')"
         aria-label="Toggle navigation"
         @click="mobile ? (drawer = !drawer) : (rail = !rail)"
       />
-      <v-app-bar-title class="flex-grow-0 mr-2">Remodel Planner</v-app-bar-title>
+      <NuxtLink to="/" class="d-flex align-center text-decoration-none mr-3" style="color: inherit">
+        <AppLogo :size="30" wordmark />
+      </NuxtLink>
       <AppProjectMenu v-if="user" />
       <v-spacer />
       <!-- UX9: persistent offline pill + subtle sync indicator; never a spinner. -->

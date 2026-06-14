@@ -1,0 +1,118 @@
+/*
+ * Punchlist — "Architectural Slate" skin.
+ * A thin layer over Vuetify that swaps the default Roboto/material feel for a
+ * blueprint-inspired identity: Inter body + Space Grotesk display, a slate
+ * brand bar with a warm-amber accent edge, amber nav pills, softened cards, and
+ * a faint drafting grid behind the content. Loaded after Vuetify's own CSS so
+ * these selectors win.
+ */
+
+:root {
+  --pl-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --pl-font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  --pl-slate: #1e3a5f;
+  --pl-amber: #e8902b;
+}
+
+/* ---- Type: replace Vuetify's Roboto with Inter, headings get the display face ---- */
+.v-application {
+  font-family: var(--pl-font-sans);
+  letter-spacing: normal;
+}
+
+.v-application .text-h1,
+.v-application .text-h2,
+.v-application .text-h3,
+.v-application .text-h4,
+.v-application .text-h5,
+.v-application .text-h6,
+.v-card-title,
+.v-toolbar-title,
+.v-app-bar-title {
+  font-family: var(--pl-font-display);
+  letter-spacing: -0.012em;
+}
+
+/* ---- App bar: a slate brand bar with a warm amber accent edge ---- */
+.app-bar.v-app-bar {
+  background:
+    linear-gradient(100deg, #1e3a5f 0%, #264d7e 58%, #1b3354 100%) !important;
+  border-bottom: 3px solid rgb(var(--v-theme-accent));
+}
+
+.v-theme--dark .app-bar.v-app-bar {
+  background:
+    linear-gradient(100deg, #14202d 0%, #1f3146 58%, #14202d 100%) !important;
+}
+
+/* Brand wordmark (app bar + sign-in). */
+.pl-wordmark {
+  font-family: var(--pl-font-display);
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  line-height: 1;
+}
+
+/* ---- Navigation drawer: amber active pill, slate emphasis ---- */
+.v-navigation-drawer .v-list-item {
+  border-radius: 10px;
+  margin-block: 2px;
+  font-weight: 500;
+}
+
+.v-navigation-drawer .v-list-item--active {
+  color: rgb(var(--v-theme-primary));
+  background-color: rgba(232, 144, 43, 0.15);
+}
+
+.v-navigation-drawer .v-list-item--active .v-list-item__overlay {
+  opacity: 0;
+}
+
+.v-navigation-drawer .v-list-item--active .v-list-item__prepend > .v-icon {
+  color: rgb(var(--v-theme-accent));
+  opacity: 1;
+}
+
+.v-theme--dark .v-navigation-drawer .v-list-item--active {
+  color: rgb(var(--v-theme-primary));
+  background-color: rgba(242, 163, 60, 0.18);
+}
+
+/* ---- Cards: a hairline slate border + a softer, layered shadow ---- */
+.v-card {
+  border: 1px solid rgba(30, 58, 95, 0.08);
+  box-shadow:
+    0 1px 2px rgba(16, 34, 54, 0.04),
+    0 6px 20px rgba(16, 34, 54, 0.06) !important;
+}
+
+.v-theme--dark .v-card {
+  border-color: rgba(157, 192, 234, 0.1);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    0 6px 20px rgba(0, 0, 0, 0.35) !important;
+}
+
+/* ---- Content surface: a faint blueprint grid behind the app ---- */
+.app-shell .v-main {
+  background-color: rgb(var(--v-theme-background));
+  background-image:
+    linear-gradient(rgba(30, 58, 95, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30, 58, 95, 0.045) 1px, transparent 1px);
+  background-size: 28px 28px;
+  background-position: -1px -1px;
+}
+
+.v-theme--dark .app-shell .v-main {
+  background-image:
+    linear-gradient(rgba(157, 192, 234, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(157, 192, 234, 0.05) 1px, transparent 1px);
+}
+
+/* Page headings use the display face by default (most pages use text-h5/h6). */
+.pl-page-title {
+  font-family: var(--pl-font-display);
+  font-weight: 600;
+  letter-spacing: -0.012em;
+}

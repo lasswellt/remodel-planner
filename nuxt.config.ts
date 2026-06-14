@@ -42,16 +42,27 @@ export default defineNuxtConfig({
     '@nuxt/eslint',
   ],
 
-  css: ['@mdi/font/css/materialdesignicons.css'],
+  // Icons ship as tree-shaken @mdi/js SVG paths (see app/plugins/vuetify-icons.ts),
+  // not the full @mdi/font webfont — the global CSS is all that's loaded here.
+  css: ['~/assets/css/app.css'],
 
   app: {
     head: {
-      title: 'Remodel Planner',
+      title: 'Punchlist — remodel planner',
       meta: [
         { charset: 'utf-8' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
-        { name: 'theme-color', content: '#1565C0' },
-        { name: 'description', content: 'Plan a room-by-room home remodel: floorplan, checklists, budgets, tasks, selections, permits, photos.' },
+        { name: 'theme-color', content: '#1E3A5F' },
+        { name: 'description', content: 'Punchlist — plan a room-by-room home remodel from demo to done: floorplan, checklists, budgets, tasks, selections, permits, photos.' },
+      ],
+      link: [
+        { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' },
+        { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
+        { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
+        {
+          rel: 'stylesheet',
+          href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap',
+        },
       ],
     },
   },
@@ -82,38 +93,56 @@ export default defineNuxtConfig({
       styles: true,
     },
     vuetifyOptions: {
-      icons: { defaultSet: 'mdi' },
+      // 'mdi-svg' stops the module auto-injecting the @mdi/font CSS; the runtime
+      // set is overridden to a custom string→path resolver in the icons plugin.
+      icons: { defaultSet: 'mdi-svg' },
+      // "Architectural Slate" — deep slate navy + warm amber accent, blueprint
+      // feel. `accent` is a custom token (use color="accent" on components).
       theme: {
         defaultTheme: 'light',
         themes: {
           light: {
             dark: false,
             colors: {
-              primary: '#1565C0',
-              secondary: '#5B7083',
-              surface: '#FCFCFF',
-              error: '#BA1A1A',
-              success: '#2E7D32',
-              warning: '#E65100',
-              info: '#0277BD',
+              'primary': '#1E3A5F',
+              'on-primary': '#FFFFFF',
+              'secondary': '#51637A',
+              'accent': '#E8902B',
+              'on-accent': '#241404',
+              'background': '#EDF1F6',
+              'surface': '#FFFFFF',
+              'on-surface': '#16222F',
+              'surface-variant': '#E2E8F0',
+              'error': '#C0413B',
+              'success': '#2F8F6B',
+              'warning': '#C9761A',
+              'info': '#2E6F9E',
             },
           },
           dark: {
             dark: true,
             colors: {
-              primary: '#A6C8FF',
-              secondary: '#BBC7DB',
-              error: '#FFB4AB',
-              success: '#7DDA87',
-              warning: '#FFB77C',
-              info: '#82CFFF',
+              'primary': '#9DC0EA',
+              'on-primary': '#06121F',
+              'secondary': '#9FB0C4',
+              'accent': '#F2A33C',
+              'on-accent': '#241404',
+              'background': '#0E1620',
+              'surface': '#16212E',
+              'on-surface': '#DCE6F2',
+              'surface-variant': '#243140',
+              'error': '#FFB4AB',
+              'success': '#7DDA87',
+              'warning': '#F2B872',
+              'info': '#82CFFF',
             },
           },
         },
       },
       defaults: {
-        VBtn: { variant: 'flat' },
-        VCard: { variant: 'elevated' },
+        VBtn: { variant: 'flat', rounded: 'lg' },
+        VCard: { variant: 'elevated', rounded: 'lg' },
+        VChip: { rounded: 'md' },
         VTextField: { variant: 'outlined', density: 'comfortable' },
         VSelect: { variant: 'outlined', density: 'comfortable' },
       },
@@ -123,15 +152,16 @@ export default defineNuxtConfig({
   pwa: {
     registerType: 'autoUpdate',
     manifest: {
-      name: 'Remodel Planner',
-      short_name: 'Remodel',
-      description: 'Room-by-room home remodel planner.',
-      theme_color: '#1565C0',
-      background_color: '#FCFCFF',
+      name: 'Punchlist — remodel planner',
+      short_name: 'Punchlist',
+      description: 'Room-by-room home remodel planner. From demo to done.',
+      theme_color: '#1E3A5F',
+      background_color: '#EDF1F6',
       display: 'standalone',
       orientation: 'portrait',
       start_url: '/',
       icons: [
+        { src: 'logo.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
         { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
         { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
         { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
