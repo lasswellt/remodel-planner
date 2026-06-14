@@ -9,7 +9,6 @@ import {
   dimsLabelWH,
   effectiveGeometry,
   footprintFromBasis,
-  inchesToFeetInput,
   interiorWH,
   parseFeetToInches,
   sqFt,
@@ -113,19 +112,32 @@ const hasWalls = computed(() => {
 })
 
 const editingDims = ref(false)
-const wDraft = ref('')
-const hDraft = ref('')
+// Separate feet + inches drafts per dimension — easier to tap on mobile than one
+// decimal-feet box.
+const wDraftFt = ref('')
+const wDraftIn = ref('')
+const hDraftFt = ref('')
+const hDraftIn = ref('')
 
 function startDimsEdit() {
-  wDraft.value = inchesToFeetInput(basisDims.value.w)
-  hDraft.value = inchesToFeetInput(basisDims.value.h)
+  const d = basisDims.value
+  wDraftFt.value = String(Math.floor(d.w / 12))
+  wDraftIn.value = String(Math.round(d.w % 12))
+  hDraftFt.value = String(Math.floor(d.h / 12))
+  hDraftIn.value = String(Math.round(d.h % 12))
   editingDims.value = true
+}
+
+// feet + inches inputs → snapped, clamped inches in the active basis.
+function dimInches(ftStr: string, inStr: string, max: number): number | null {
+  const total = (parseFloat(ftStr) || 0) * 12 + (parseFloat(inStr) || 0)
+  return parseFeetToInches(String(total / 12), DEFAULT_GRID_STEP, max)
 }
 
 async function saveDims() {
   editingDims.value = false
-  const bw = parseFeetToInches(wDraft.value, DEFAULT_GRID_STEP, WORLD.w)
-  const bh = parseFeetToInches(hDraft.value, DEFAULT_GRID_STEP, WORLD.h)
+  const bw = dimInches(wDraftFt.value, wDraftIn.value, WORLD.w)
+  const bh = dimInches(hDraftFt.value, hDraftIn.value, WORLD.h)
   if (bw === null || bh === null) return
   // Interpret the entered W/H in the active basis, then store the footprint.
   const fp = footprintFromBasis(geo.value, bw, bh)
@@ -134,6 +146,13 @@ async function saveDims() {
   if (w !== geo.value.w || h !== geo.value.h) {
     await roomsStore.updateRoom(props.room.id, { geometry: { ...geo.value, w, h } })
   }
+}
+
+// Commit only when focus leaves the whole editor, not when tabbing ft → in.
+function onDimBlur(e: FocusEvent) {
+  const next = e.relatedTarget
+  if (next instanceof HTMLElement && next.closest('.dims-edit')) return
+  saveDims()
 }
 
 // ---- walls / basis ----
@@ -264,36 +283,68 @@ const statusItems: { value: RoomStatus, title: string }[] = [
           · {{ grossArea }} sq ft<span v-if="overlapped" class="text-medium-emphasis"> (after overlap)</span><template v-if="hasWalls"> · {{ usableArea }} usable</template>
           · floor {{ room.floor }}
         </template>
-        <div v-else class="d-flex align-center ga-1 mt-1">
+        <div v-else class="d-flex flex-wrap align-center ga-1 mt-1 dims-edit">
           <v-text-field
-            v-model="wDraft"
+            v-model="wDraftFt"
+            type="number"
+            inputmode="numeric"
+            min="0"
+            suffix="ft"
             density="compact"
             variant="outlined"
             hide-details
-            label="W (ft)"
-            type="number"
-            min="1"
-            step="0.5"
-            style="max-width: 90px"
+            aria-label="Width feet"
+            style="max-width: 76px"
             autofocus
             @keyup.enter="saveDims"
-            @blur="saveDims"
+            @blur="onDimBlur"
           />
-          <span class="text-body-2">×</span>
           <v-text-field
-            v-model="hDraft"
+            v-model="wDraftIn"
+            type="number"
+            inputmode="numeric"
+            min="0"
+            max="11"
+            suffix="in"
             density="compact"
             variant="outlined"
             hide-details
-            label="H (ft)"
-            type="number"
-            min="1"
-            step="0.5"
-            style="max-width: 90px"
+            aria-label="Width inches"
+            style="max-width: 72px"
             @keyup.enter="saveDims"
-            @blur="saveDims"
+            @blur="onDimBlur"
           />
-          <span class="text-body-2 text-medium-emphasis ml-1">ft {{ basis }}</span>
+          <span class="text-body-2 mx-1">×</span>
+          <v-text-field
+            v-model="hDraftFt"
+            type="number"
+            inputmode="numeric"
+            min="0"
+            suffix="ft"
+            density="compact"
+            variant="outlined"
+            hide-details
+            aria-label="Height feet"
+            style="max-width: 76px"
+            @keyup.enter="saveDims"
+            @blur="onDimBlur"
+          />
+          <v-text-field
+            v-model="hDraftIn"
+            type="number"
+            inputmode="numeric"
+            min="0"
+            max="11"
+            suffix="in"
+            density="compact"
+            variant="outlined"
+            hide-details
+            aria-label="Height inches"
+            style="max-width: 72px"
+            @keyup.enter="saveDims"
+            @blur="onDimBlur"
+          />
+          <span v-if="basis === 'interior'" class="text-caption text-medium-emphasis ml-1">interior</span>
         </div>
       </v-card-subtitle>
       <template #append>

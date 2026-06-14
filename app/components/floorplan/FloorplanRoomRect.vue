@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Geometry, Room } from '~/models'
+import type { DimDetail } from '~/composables/useFloorplan'
 import { buildRoomPath, dimsLabel, openingHitRect, openingMeasures, sqFt } from '~/utils/geometry'
 import { openingPrims, wallPrims } from '~/utils/floorplan-draw'
 import { FIXTURE_SELECTED, LABEL_COLOR, RING_ARC, RING_DONE, RING_TRACK, STATUS_STYLES } from '~/utils/floorplan-style'
@@ -20,7 +21,12 @@ const props = defineProps<{
   overBudget?: boolean
   selectedFixtureId?: string | null
   selectedOpeningId?: string | null
+  dimDetail?: DimDetail
 }>()
+
+// Dimension annotations (room size, opening positions, fixture sizes) are hidden
+// at 'low'; 'all' also dimensions every opening + fixture.
+const showDims = computed(() => (props.dimDetail ?? 'medium') !== 'low')
 
 const roomPath = computed(() => buildRoomPath(props.geometry))
 // A room fully bitten away by higher rooms has no outline — suppress its walls,
@@ -37,10 +43,12 @@ const openings = computed(() =>
     hit: openingHitRect(props.geometry, op),
   })),
 )
-// Dimension labels (gap to each corner) for the selected opening — shown live
-// while dragging so it can be placed accurately.
+// Dimension labels (gap to each corner) — for every opening at 'all' detail,
+// otherwise just the selected one (shown live while dragging for placement).
 const openingMeasureLabels = computed(() => {
-  const sel = (props.geometry.openings ?? []).find(o => o.id === props.selectedOpeningId)
+  const ops = props.geometry.openings ?? []
+  if (props.dimDetail === 'all') return ops.flatMap(o => openingMeasures(props.geometry, o))
+  const sel = ops.find(o => o.id === props.selectedOpeningId)
   return sel ? openingMeasures(props.geometry, sel) : []
 })
 
@@ -151,6 +159,7 @@ watch(
         font-weight="600"
       >{{ label }}</text>
       <text
+        v-if="showDims"
         class="fp-room__text fp-room__text--dim"
         :x="geometry.x + geometry.w / 2"
         :y="geometry.y + geometry.h / 2 + 14"
@@ -159,7 +168,7 @@ watch(
       >{{ dimsLabel(geometry) }}</text>
       <!-- Effective area drops when a higher room bites this one (overlap). -->
       <text
-        v-if="bitten && geometry.h >= 54"
+        v-if="showDims && bitten && geometry.h >= 54"
         class="fp-room__text fp-room__text--cut"
         :x="geometry.x + geometry.w / 2"
         :y="geometry.y + geometry.h / 2 + 28"
@@ -185,6 +194,7 @@ watch(
       :room-geometry="geometry"
       :fixture="f"
       :selected="f.id === selectedFixtureId"
+      :show-size="dimDetail === 'all'"
     />
     <g v-if="showRing" class="fp-room__ring">
       <title>{{ progress.pct }}% complete ({{ progress.done }}/{{ progress.total }})</title>

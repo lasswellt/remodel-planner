@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Fixture, Geometry } from '~/models'
-import { fixtureWorldRect } from '~/utils/geometry'
+import { dimsLabelWH, fixtureWorldRect } from '~/utils/geometry'
 import { fixtureDetailPrims } from '~/utils/floorplan-draw'
 import { fixtureLabel } from '~/config/fixtures'
 import { FIXTURE_FILL, FIXTURE_LABEL, FIXTURE_SELECTED, FIXTURE_STROKE } from '~/utils/floorplan-style'
@@ -12,12 +12,16 @@ const props = defineProps<{
   roomGeometry: Geometry
   fixture: Fixture
   selected: boolean
+  showSize?: boolean
 }>()
 
 const rect = computed(() => fixtureWorldRect(props.roomGeometry, props.fixture))
 const detail = computed(() => fixtureDetailPrims(rect.value, props.fixture.kind))
 const label = computed(() => fixtureLabel(props.fixture.kind, props.fixture.label))
 const showLabel = computed(() => rect.value.w >= 28 && rect.value.h >= 16)
+// Size label (e.g. 5' × 2'6") shown at 'all' detail when the box can fit a 2nd line.
+const sizeLabel = computed(() => dimsLabelWH(rect.value.w, rect.value.h))
+const showSizeLabel = computed(() => props.showSize && showLabel.value && rect.value.h >= 26)
 </script>
 
 <template>
@@ -43,11 +47,21 @@ const showLabel = computed(() => rect.value.w >= 28 && rect.value.h >= 16)
       v-if="showLabel"
       class="fp-fixture__label"
       :x="rect.x + rect.w / 2"
-      :y="rect.y + rect.h / 2 + 3"
+      :y="rect.y + rect.h / 2 + (showSizeLabel ? -2 : 3)"
       text-anchor="middle"
       font-size="9"
       :fill="FIXTURE_LABEL"
     >{{ label }}</text>
+    <text
+      v-if="showSizeLabel"
+      class="fp-fixture__label"
+      :x="rect.x + rect.w / 2"
+      :y="rect.y + rect.h / 2 + 9"
+      text-anchor="middle"
+      font-size="8"
+      :fill="FIXTURE_LABEL"
+      opacity="0.75"
+    >{{ sizeLabel }}</text>
   </g>
 </template>
 

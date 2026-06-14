@@ -24,6 +24,9 @@ import { FIXTURE_CATALOG } from '~/config/fixtures'
 
 export type FloorplanTool = 'select' | 'draw' | 'notch' | 'opening' | 'fixture'
 export type HandleId = 'nw' | 'ne' | 'sw' | 'se'
+// How much dimensioning to annotate on the plan: names only / room sizes /
+// room sizes + every opening position + fixture sizes.
+export type DimDetail = 'low' | 'medium' | 'all'
 
 const DEFAULT_DOOR_WIDTH = 32
 const DEFAULT_WINDOW_WIDTH = 36

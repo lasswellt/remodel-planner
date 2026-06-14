@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { FixtureKind, OpeningKind } from '~/models'
-import type { FloorplanTool } from '~/composables/useFloorplan'
+import type { DimDetail, FloorplanTool } from '~/composables/useFloorplan'
 import { GRID_STEPS } from '~/utils/geometry'
 import { FIXTURE_CATALOG, FIXTURE_OPTIONS } from '~/config/fixtures'
 
@@ -23,11 +23,18 @@ const gridStep = defineModel<number>('gridStep', { default: 6 })
 const floor = defineModel<number>('floor', { default: 1 })
 const openingKind = defineModel<OpeningKind>('openingKind', { default: 'door' })
 const fixtureKind = defineModel<FixtureKind>('fixtureKind', { default: 'tub' })
+const dimDetail = defineModel<DimDetail>('dimDetail', { default: 'medium' })
 
 const gridItems = GRID_STEPS.map(step => ({
   title: `${step}″ grid`,
   value: step,
 }))
+
+const dimItems: { title: string, value: DimDetail }[] = [
+  { title: 'Few dimensions', value: 'low' },
+  { title: 'Room sizes', value: 'medium' },
+  { title: 'All dimensions', value: 'all' },
+]
 </script>
 
 <template>
@@ -104,6 +111,17 @@ const gridItems = GRID_STEPS.map(step => ({
     <v-spacer />
 
     <v-select
+      v-model="dimDetail"
+      :items="dimItems"
+      density="compact"
+      hide-details
+      variant="outlined"
+      class="fp-dim-select"
+      prepend-inner-icon="mdi-ruler-square"
+      aria-label="How many dimensions to show on the plan"
+    />
+
+    <v-select
       v-model="gridStep"
       :items="gridItems"
       density="compact"
@@ -136,6 +154,9 @@ const gridItems = GRID_STEPS.map(step => ({
 <style scoped>
 .fp-grid-select {
   max-width: 120px;
+}
+.fp-dim-select {
+  max-width: 170px;
 }
 .fp-fixture-select {
   max-width: 170px;

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Fixture, FixtureKind, Geometry, Opening, OpeningKind, Room } from '~/models'
-import type { FloorplanTool, HandleId } from '~/composables/useFloorplan'
+import type { DimDetail, FloorplanTool, HandleId } from '~/composables/useFloorplan'
 import { GRID_MAJOR, GRID_MINOR, PLAN_BG } from '~/utils/floorplan-style'
 import { effectiveGeometry, WORLD } from '~/utils/geometry'
 
@@ -13,6 +13,7 @@ const props = defineProps<{
   gridStep: number
   openingKind: OpeningKind
   fixtureKind: FixtureKind
+  dimDetail: DimDetail
 }>()
 
 const emit = defineEmits<{
@@ -159,6 +160,7 @@ const ghost = computed(() => props.rooms.length === 0)
       :selected="room.id === selectedId"
       :selected-fixture-id="selectedFixtureId"
       :selected-opening-id="selectedOpeningId"
+      :dim-detail="dimDetail"
     />
 
     <!-- Draw preview -->

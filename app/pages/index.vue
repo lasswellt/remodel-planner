@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Fixture, FixtureKind, Geometry, Notch, Opening, OpeningKind, Room, RoomType } from '~/models'
-import type { FloorplanTool } from '~/composables/useFloorplan'
+import type { DimDetail, FloorplanTool } from '~/composables/useFloorplan'
 import FloorplanCanvas from '~/components/floorplan/FloorplanCanvas.vue'
 import { clampFixtureToRoom, DEFAULT_GRID_STEP } from '~/utils/geometry'
 import { buildFloorplanSvg, downloadPng, downloadSvg, slugify } from '~/utils/floorplan-export'
@@ -18,6 +18,7 @@ const { mdAndUp } = useDisplay()
 
 const tool = ref<FloorplanTool>('select')
 const gridStep = useLocalStorage('remodel.gridStep', DEFAULT_GRID_STEP)
+const dimDetail = useLocalStorage<DimDetail>('remodel.dimDetail', 'medium')
 const floor = ref(1)
 const selectedId = ref<string | null>(null)
 const selectedFixtureId = ref<string | null>(null)
@@ -255,6 +256,7 @@ const projectCreateOpen = ref(false)
       v-model:floor="floor"
       v-model:opening-kind="openingKind"
       v-model:fixture-kind="fixtureKind"
+      v-model:dim-detail="dimDetail"
       :floors="floors"
       :export-disabled="floorRooms.length === 0"
       :has-selection="!!selectedId"
@@ -274,6 +276,7 @@ const projectCreateOpen = ref(false)
           :grid-step="gridStep"
           :opening-kind="openingKind"
           :fixture-kind="fixtureKind"
+          :dim-detail="dimDetail"
           @create="onCreate"
           @commit="onCommit"
           @delete-request="onDeleteRequest"
