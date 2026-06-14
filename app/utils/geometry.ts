@@ -155,6 +155,11 @@ export function dimsLabelWH(w: number, h: number): string {
   return `${inchesToFeetLabel(w)} × ${inchesToFeetLabel(h)}`
 }
 
+// Single length in feet-inches, e.g. 30 → "2'6\"".
+export function lengthLabel(inches: number): string {
+  return inchesToFeetLabel(inches)
+}
+
 // e.g. 150" × 120" → "12'6\" × 10'" (the footprint / exterior dimensions)
 export function dimsLabel(geo: Geometry): string {
   return dimsLabelWH(geo.w, geo.h)
@@ -600,6 +605,54 @@ export function doorGeometry(geo: Geometry, op: Opening, range?: { offset: numbe
   // sweep flag: sign of the cross product (open−hinge) × (latch−hinge)
   const cross = (open.x - hinge.x) * (latch.y - hinge.y) - (open.y - hinge.y) * (latch.x - hinge.x)
   return { hinge, open, latch, sweep: cross > 0 ? 1 : 0, radius: width }
+}
+
+// World rect covering an opening for pointer hit-testing / selection: jamb-to-
+// jamb along the wall × a grab band biased toward the interior (a small lip
+// outside the wall, the rest inside) so it's easy to grab without spilling
+// outside the plan.
+export function openingHitRect(geo: Geometry, op: Opening): Rect {
+  const ax = wallAxis(geo, op.wall)
+  const lip = 4
+  const band = Math.max(ax.thickness, 0) + 16
+  const sx = ax.ax + ax.dx * op.offset
+  const sy = ax.ay + ax.dy * op.offset
+  if (ax.dx !== 0) {
+    const y = ax.ny > 0 ? ax.ay - lip : ax.ay - band + lip
+    return { x: sx, y, w: op.width, h: band }
+  }
+  const x = ax.nx > 0 ? ax.ax - lip : ax.ax - band + lip
+  return { x, y: sy, w: band, h: op.width }
+}
+
+// Project a world point onto an opening's wall → the snapped, clamped offset that
+// keeps the opening fully on the wall. Used to drag an opening along its wall.
+export function openingOffsetAt(geo: Geometry, op: Opening, pt: { x: number, y: number }, step: number, grabAlong = 0): number {
+  const ax = wallAxis(geo, op.wall)
+  const along = ax.dx !== 0 ? pt.x - ax.ax : pt.y - ax.ay
+  const offset = snapTo(along - grabAlong, step)
+  return Math.min(Math.max(0, offset), Math.max(0, ax.length - op.width))
+}
+
+// Dimension labels for the gaps between an opening and its wall's two corners
+// (in feet-inches), positioned along the wall and inset toward the interior.
+export function openingMeasures(geo: Geometry, op: Opening): { x: number, y: number, text: string }[] {
+  const ax = wallAxis(geo, op.wall)
+  const before = op.offset
+  const after = ax.length - op.offset - op.width
+  const inset = Math.max(ax.thickness, 0) + 12
+  const mk = (start: number, len: number) => {
+    const mid = start + len / 2
+    return {
+      x: ax.ax + ax.dx * mid + ax.nx * inset,
+      y: ax.ay + ax.dy * mid + ax.ny * inset,
+      text: lengthLabel(Math.round(len)),
+    }
+  }
+  const out: { x: number, y: number, text: string }[] = []
+  if (before > 0.5) out.push(mk(0, before))
+  if (after > 0.5) out.push(mk(op.offset + op.width, after))
+  return out
 }
 
 // ---- fixtures ----

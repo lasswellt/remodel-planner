@@ -20,7 +20,7 @@ import { formatMoney } from '~/utils/money'
 import { useRoomsStore } from '~/stores/rooms'
 import { useProjectStore } from '~/stores/project'
 
-const props = defineProps<{ room: Room, selectedFixtureId?: string | null }>()
+const props = defineProps<{ room: Room, selectedFixtureId?: string | null, selectedOpeningId?: string | null }>()
 const emit = defineEmits<{
   close: []
   deleteRequest: [id: string]
@@ -30,6 +30,7 @@ const emit = defineEmits<{
   updateFixture: [roomId: string, fixtureId: string, patch: Partial<Fixture>]
   deleteFixture: [roomId: string, fixtureId: string]
   selectFixture: [id: string | null]
+  selectOpening: [id: string | null]
 }>()
 
 const db = useFirestore()
@@ -145,9 +146,23 @@ const SWING_ITEMS: { value: SwingDir, title: string }[] = [
 ]
 const WALL_NAME: Record<WallSide, string> = { n: 'top', s: 'bottom', w: 'left', e: 'right' }
 
+// Wall length the opening slides along (n/s run the room width, e/w the height).
+function wallLen(wall: WallSide): number {
+  return wall === 'n' || wall === 's' ? geo.value.w : geo.value.h
+}
+
 function updateOpening(id: string, patch: Partial<Opening>) {
   roomsStore.updateRoom(props.room.id, {
-    geometry: { ...geo.value, openings: openings.value.map(o => (o.id === id ? { ...o, ...patch } : o)) },
+    geometry: {
+      ...geo.value,
+      openings: openings.value.map((o) => {
+        if (o.id !== id) return o
+        const next = { ...o, ...patch }
+        // Keep the opening fully on its wall after a width/position change.
+        next.offset = Math.min(Math.max(0, next.offset), Math.max(0, wallLen(next.wall) - next.width))
+        return next
+      }),
+    },
   })
 }
 function deleteOpening(id: string) {
@@ -349,12 +364,19 @@ const statusItems: { value: RoomStatus, title: string }[] = [
           No doors or windows yet. Pick the Opening tool, choose Door or Window, then click a wall.
         </p>
         <v-expansion-panels v-else variant="accordion" multiple>
-          <v-expansion-panel v-for="o in openings" :key="o.id">
-            <v-expansion-panel-title>
+          <v-expansion-panel
+            v-for="o in openings"
+            :key="o.id"
+            :class="{ 'opening-selected': o.id === selectedOpeningId }"
+          >
+            <v-expansion-panel-title @click="emit('selectOpening', o.id)">
               <v-icon :icon="o.kind === 'window' ? 'mdi-window-closed-variant' : 'mdi-door'" size="small" class="mr-2" />
               {{ o.kind === 'window' ? 'Window' : 'Door' }} · {{ WALL_NAME[o.wall] }} · {{ o.width }}″
             </v-expansion-panel-title>
             <v-expansion-panel-text>
+              <p class="text-caption text-medium-emphasis mb-2 ma-0">
+                Drag the opening on the plan to reposition it, or set the distance from the wall corner below.
+              </p>
               <div class="d-flex flex-wrap ga-2">
                 <v-text-field
                   :model-value="o.width"
@@ -368,6 +390,19 @@ const statusItems: { value: RoomStatus, title: string }[] = [
                   hide-details
                   style="max-width: 96px"
                   @change="(e: Event) => updateOpening(o.id, { width: numVal(e, 6, o.width) })"
+                />
+                <v-text-field
+                  :model-value="o.offset"
+                  label="From corner"
+                  type="number"
+                  min="0"
+                  step="1"
+                  suffix="″"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  style="max-width: 120px"
+                  @change="(e: Event) => updateOpening(o.id, { offset: numVal(e, 0, o.offset) })"
                 />
                 <template v-if="o.kind === 'door'">
                   <v-select
@@ -694,5 +729,10 @@ const statusItems: { value: RoomStatus, title: string }[] = [
 .fixture-editor {
   background: rgba(var(--v-theme-primary), 0.06);
   border-radius: 6px;
+}
+.opening-selected {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: -2px;
+  border-radius: 4px;
 }
 </style>

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { Geometry, Room } from '~/models'
-import { buildRoomPath, dimsLabel, sqFt } from '~/utils/geometry'
-import { allOpeningPrims, wallPrims } from '~/utils/floorplan-draw'
-import { RING_ARC, RING_DONE, RING_TRACK, STATUS_STYLES } from '~/utils/floorplan-style'
+import { buildRoomPath, dimsLabel, openingHitRect, openingMeasures, sqFt } from '~/utils/geometry'
+import { openingPrims, wallPrims } from '~/utils/floorplan-draw'
+import { FIXTURE_SELECTED, LABEL_COLOR, RING_ARC, RING_DONE, RING_TRACK, STATUS_STYLES } from '~/utils/floorplan-style'
 import type { Progress } from '~/utils/rollup'
 import { effectiveRoomStatus } from '~/utils/rollup'
 
@@ -19,6 +19,7 @@ const props = defineProps<{
   selected: boolean
   overBudget?: boolean
   selectedFixtureId?: string | null
+  selectedOpeningId?: string | null
 }>()
 
 const roomPath = computed(() => buildRoomPath(props.geometry))
@@ -26,8 +27,22 @@ const roomPath = computed(() => buildRoomPath(props.geometry))
 // openings, fixtures and labels so they don't float on top of the covering room.
 const covered = computed(() => roomPath.value === '')
 const walls = computed(() => (covered.value ? [] : wallPrims(props.geometry)))
-const openings = computed(() => (covered.value ? [] : allOpeningPrims(props.geometry)))
 const fixtures = computed(() => (covered.value ? [] : props.geometry.fixtures ?? []))
+// Openings rendered per-opening so each is selectable + draggable; each carries
+// its symbol prims and a transparent hit rect for the pointer.
+const openings = computed(() =>
+  (covered.value ? [] : props.geometry.openings ?? []).map(op => ({
+    op,
+    prims: openingPrims(props.geometry, op),
+    hit: openingHitRect(props.geometry, op),
+  })),
+)
+// Dimension labels (gap to each corner) for the selected opening — shown live
+// while dragging so it can be placed accurately.
+const openingMeasureLabels = computed(() => {
+  const sel = (props.geometry.openings ?? []).find(o => o.id === props.selectedOpeningId)
+  return sel ? openingMeasures(props.geometry, sel) : []
+})
 
 // UX6: an over-budget room is the isolated, visually distinct item on the plan.
 // Amber warning triangle at the top-left (the ring owns the top-right), with a
@@ -85,7 +100,41 @@ watch(
     />
     <!-- Structural walls + door/window openings cut into them -->
     <FloorplanPrims v-if="walls.length" :prims="walls" />
-    <FloorplanPrims v-if="openings.length" :prims="openings" />
+    <g
+      v-for="o in openings"
+      :key="o.op.id"
+      :data-opening-id="o.op.id"
+      class="fp-opening"
+    >
+      <!-- transparent grab target along the wall -->
+      <rect :x="o.hit.x" :y="o.hit.y" :width="o.hit.w" :height="o.hit.h" fill="transparent" />
+      <FloorplanPrims :prims="o.prims" />
+      <rect
+        v-if="o.op.id === selectedOpeningId"
+        :x="o.hit.x"
+        :y="o.hit.y"
+        :width="o.hit.w"
+        :height="o.hit.h"
+        rx="2"
+        fill="none"
+        :stroke="FIXTURE_SELECTED"
+        stroke-width="1.5"
+        stroke-dasharray="4 3"
+        pointer-events="none"
+      />
+    </g>
+    <!-- live measurement labels for the selected opening -->
+    <text
+      v-for="(m, i) in openingMeasureLabels"
+      :key="`om${i}`"
+      class="fp-room__measure"
+      :x="m.x"
+      :y="m.y"
+      text-anchor="middle"
+      font-size="11"
+      font-weight="600"
+      :fill="LABEL_COLOR"
+    >{{ m.text }}</text>
     <template v-if="showLabel">
       <text
         class="fp-room__text"
@@ -180,6 +229,18 @@ watch(
 }
 .fp-room__text--dim {
   opacity: 0.75;
+}
+.fp-opening {
+  cursor: move;
+}
+.fp-room__measure {
+  pointer-events: none;
+  user-select: none;
+  font-family: system-ui, sans-serif;
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 .fp-room__ring circle {
   transition: stroke-dasharray 0.5s ease, stroke 0.4s ease;

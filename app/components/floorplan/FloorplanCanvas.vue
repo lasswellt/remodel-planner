@@ -22,6 +22,8 @@ const emit = defineEmits<{
   addNotch: [roomId: string, notch: { x: number, y: number, w: number, h: number }]
   bringToFront: [id: string]
   addOpening: [roomId: string, opening: Omit<Opening, 'id'>]
+  commitOpening: [roomId: string, opening: Opening]
+  deleteOpening: [roomId: string, openingId: string]
   addFixture: [roomId: string, fixture: Omit<Fixture, 'id'>]
   commitFixture: [roomId: string, fixture: Fixture]
   deleteFixture: [roomId: string, fixtureId: string]
@@ -29,6 +31,7 @@ const emit = defineEmits<{
 
 const selectedId = defineModel<string | null>('selected', { default: null })
 const selectedFixtureId = defineModel<string | null>('selectedFixture', { default: null })
+const selectedOpeningId = defineModel<string | null>('selectedOpening', { default: null })
 const tool = defineModel<FloorplanTool>('tool', { default: 'select' })
 
 const svgEl = ref<SVGSVGElement | null>(null)
@@ -42,6 +45,7 @@ const fp = useFloorplan({
   gridStep: toRef(props, 'gridStep'),
   selectedId,
   selectedFixtureId,
+  selectedOpeningId,
   openingKind: toRef(props, 'openingKind'),
   fixtureKind: toRef(props, 'fixtureKind'),
   onCreate: geo => emit('create', geo),
@@ -50,6 +54,8 @@ const fp = useFloorplan({
   onAddNotch: (roomId, notch) => emit('addNotch', roomId, notch),
   onBringToFront: id => emit('bringToFront', id),
   onAddOpening: (roomId, opening) => emit('addOpening', roomId, opening),
+  onCommitOpening: (roomId, opening) => emit('commitOpening', roomId, opening),
+  onDeleteOpening: (roomId, openingId) => emit('deleteOpening', roomId, openingId),
   onAddFixture: (roomId, fixture) => emit('addFixture', roomId, fixture),
   onCommitFixture: (roomId, fixture) => emit('commitFixture', roomId, fixture),
   onDeleteFixture: (roomId, fixtureId) => emit('deleteFixture', roomId, fixtureId),
@@ -63,11 +69,23 @@ useEventListener(window, 'keydown', fp.onKeydown)
 // has its own rotate); routed here so it includes any in-flight overlay/nudge.
 defineExpose({ rotateRoom: fp.rotateSelected })
 
+// Live stacking snapshot: each room with its live geometry and effective z. The
+// room currently being dragged is forced topmost so it bites overlaps the
+// instant it is grabbed, without waiting for the async bring-to-front write.
+const liveStack = computed(() => {
+  const movingId = fp.overlay.value?.id ?? null
+  return props.rooms.map((room, i) => ({
+    room,
+    i,
+    z: room.id === movingId ? Number.MAX_SAFE_INTEGER : (room.z ?? 0),
+    geometry: fp.liveGeometry(room),
+  }))
+})
+
 // Effective geometry per room: footprint with higher rooms' overlaps bitten out
-// (non-destructive) and any in-flight move/fixture overlay applied — recomputed
-// live as rooms drag. `rooms` is already one floor (different floors never mix).
+// (non-destructive), recomputed live as rooms drag. `rooms` is one floor.
 const effGeo = computed<Record<string, Geometry>>(() => {
-  const live = props.rooms.map(r => ({ id: r.id, z: r.z, geometry: fp.liveGeometry(r) }))
+  const live = liveStack.value.map(s => ({ id: s.room.id, z: s.z, geometry: s.geometry }))
   const map: Record<string, Geometry> = {}
   for (const r of live) map[r.id] = effectiveGeometry(r, live)
   return map
@@ -75,6 +93,12 @@ const effGeo = computed<Record<string, Geometry>>(() => {
 function geoFor(room: Room): Geometry {
   return effGeo.value[room.id] ?? fp.liveGeometry(room)
 }
+
+// Paint rooms in stacking order (z asc, ties by array order) so a higher room —
+// the one that bites the overlap — is drawn on top of the room it covers.
+const roomsByZ = computed(() =>
+  [...liveStack.value].sort((a, b) => (a.z - b.z) || (a.i - b.i)).map(s => s.room),
+)
 
 const HANDLE = 12
 // Resize handles target the selected room; hidden while a fixture is selected
@@ -126,7 +150,7 @@ const ghost = computed(() => props.rooms.length === 0)
     <rect :width="WORLD.w" :height="WORLD.h" fill="url(#fp-grid-major)" />
 
     <FloorplanRoomRect
-      v-for="room in rooms"
+      v-for="room in roomsByZ"
       :key="room.id"
       :room="room"
       :geometry="geoFor(room)"
@@ -134,6 +158,7 @@ const ghost = computed(() => props.rooms.length === 0)
       :over-budget="budget.overBudgetRoomIds.value.has(room.id)"
       :selected="room.id === selectedId"
       :selected-fixture-id="selectedFixtureId"
+      :selected-opening-id="selectedOpeningId"
     />
 
     <!-- Draw preview -->

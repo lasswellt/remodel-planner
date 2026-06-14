@@ -14,8 +14,12 @@ import {
   MIN_ROOM_SIZE,
   moveTo,
   nudge,
+  lengthLabel,
   openingGapRect,
+  openingHitRect,
   openingHitTest,
+  openingMeasures,
+  openingOffsetAt,
   rectFromCorners,
   rectilinearRings,
   rotate90,
@@ -298,6 +302,41 @@ describe('wall bands & segments', () => {
       .toEqual({ x: 100, y: 0, w: 36, h: 6 })
     expect(openingGapRect(room, { id: 's', kind: 'door', wall: 's', offset: 100, width: 36 }))
       .toEqual({ x: 100, y: 112, w: 36, h: 8 }) // y+h − thickness = 120−8
+  })
+})
+
+describe('opening move + measurement', () => {
+  const room = gw({ x: 0, y: 0, w: 240, h: 120, walls: { n: 6, s: 0, e: 0, w: 0 } })
+  const door: Opening = { id: 'd', kind: 'door', wall: 'n', offset: 100, width: 36 }
+
+  it('lengthLabel formats inches as feet-inches', () => {
+    expect(lengthLabel(30)).toBe('2\'6"')
+    expect(lengthLabel(24)).toBe('2\'')
+  })
+
+  it('openingOffsetAt projects, snaps and clamps onto the wall', () => {
+    expect(openingOffsetAt(room, door, { x: 120, y: 2 }, 6)).toBe(120)
+    expect(openingOffsetAt(room, door, { x: 9999, y: 2 }, 6)).toBe(240 - 36) // clamped to wall end
+    expect(openingOffsetAt(room, door, { x: 130, y: 2 }, 6, 10)).toBe(120) // grab offset honored
+  })
+
+  it('openingHitRect spans the opening width with an interior-biased band', () => {
+    const r = openingHitRect(room, door)
+    expect(r.x).toBe(100)
+    expect(r.w).toBe(36)
+    expect(r.h).toBe(6 + 16) // wall thickness + grab band
+    expect(r.y).toBe(-4) // small lip above the top edge, rest inside
+  })
+
+  it('openingMeasures returns the gap to each corner in feet-inches', () => {
+    const m = openingMeasures(room, door)
+    expect(m).toHaveLength(2)
+    expect(m[0]).toMatchObject({ x: 50, text: lengthLabel(100) }) // before gap mid
+    expect(m[1]).toMatchObject({ x: 188, text: lengthLabel(104) }) // after gap mid (240-100-36)
+  })
+
+  it('omits a measurement when the opening is flush to a corner', () => {
+    expect(openingMeasures(room, { ...door, offset: 0 })).toHaveLength(1)
   })
 })
 

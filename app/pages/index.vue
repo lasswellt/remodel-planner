@@ -21,6 +21,7 @@ const gridStep = useLocalStorage('remodel.gridStep', DEFAULT_GRID_STEP)
 const floor = ref(1)
 const selectedId = ref<string | null>(null)
 const selectedFixtureId = ref<string | null>(null)
+const selectedOpeningId = ref<string | null>(null)
 const openingKind = ref<OpeningKind>('door')
 const fixtureKind = ref<FixtureKind>('tub')
 const canvas = ref<InstanceType<typeof FloorplanCanvas> | null>(null)
@@ -38,12 +39,13 @@ const selectedRoom = computed(
   () => floorRooms.value.find(r => r.id === selectedId.value) ?? null,
 )
 
-watch(floor, () => { selectedId.value = null; selectedFixtureId.value = null })
+watch(floor, () => { selectedId.value = null; selectedFixtureId.value = null; selectedOpeningId.value = null })
 // Exit notch mode when the selection is cleared
 watch(selectedId, (id) => { if (!id && tool.value === 'notch') tool.value = 'select' })
 watch(() => projectStore.currentProjectId, () => {
   selectedId.value = null
   selectedFixtureId.value = null
+  selectedOpeningId.value = null
   floor.value = 1
   addedTop.value = 1
 })
@@ -127,10 +129,28 @@ function onBringToFront(id: string) {
 function onAddOpening(roomId: string, opening: Omit<Opening, 'id'>) {
   const room = roomsStore.roomById[roomId]
   if (!room) return
-  const next: Opening = { id: crypto.randomUUID(), ...opening }
+  const id = crypto.randomUUID()
   roomsStore.updateRoom(roomId, {
-    geometry: { ...room.geometry, openings: [...(room.geometry.openings ?? []), next] },
+    geometry: { ...room.geometry, openings: [...(room.geometry.openings ?? []), { id, ...opening }] },
   })
+  selectedOpeningId.value = id // select the just-placed opening for tweaking
+}
+
+function onCommitOpening(roomId: string, opening: Opening) {
+  const room = roomsStore.roomById[roomId]
+  if (!room) return
+  roomsStore.updateRoom(roomId, {
+    geometry: { ...room.geometry, openings: (room.geometry.openings ?? []).map(o => (o.id === opening.id ? opening : o)) },
+  })
+}
+
+function onDeleteOpening(roomId: string, openingId: string) {
+  const room = roomsStore.roomById[roomId]
+  if (!room) return
+  roomsStore.updateRoom(roomId, {
+    geometry: { ...room.geometry, openings: (room.geometry.openings ?? []).filter(o => o.id !== openingId) },
+  })
+  if (selectedOpeningId.value === openingId) selectedOpeningId.value = null
 }
 
 // --- fixtures ---
@@ -245,6 +265,7 @@ const projectCreateOpen = ref(false)
           ref="canvas"
           v-model:selected="selectedId"
           v-model:selected-fixture="selectedFixtureId"
+          v-model:selected-opening="selectedOpeningId"
           v-model:tool="tool"
           :rooms="floorRooms"
           :grid-step="gridStep"
@@ -256,6 +277,8 @@ const projectCreateOpen = ref(false)
           @add-notch="onAddNotch"
           @bring-to-front="onBringToFront"
           @add-opening="onAddOpening"
+          @commit-opening="onCommitOpening"
+          @delete-opening="onDeleteOpening"
           @add-fixture="onAddFixture"
           @commit-fixture="onCommitFixture"
           @delete-fixture="onDeleteFixture"
@@ -265,6 +288,7 @@ const projectCreateOpen = ref(false)
         <FloorplanRoomSummaryPanel
           :room="selectedRoom"
           :selected-fixture-id="selectedFixtureId"
+          :selected-opening-id="selectedOpeningId"
           @close="selectedId = null"
           @delete-request="onDeleteRequest"
           @rotate="onRotate"
@@ -273,6 +297,7 @@ const projectCreateOpen = ref(false)
           @update-fixture="onUpdateFixture"
           @delete-fixture="onDeleteFixture"
           @select-fixture="(id: string | null) => selectedFixtureId = id"
+          @select-opening="(id: string | null) => selectedOpeningId = id"
         />
       </div>
     </div>
@@ -287,6 +312,7 @@ const projectCreateOpen = ref(false)
         v-if="selectedRoom"
         :room="selectedRoom"
         :selected-fixture-id="selectedFixtureId"
+        :selected-opening-id="selectedOpeningId"
         @close="selectedId = null"
         @delete-request="onDeleteRequest"
         @rotate="onRotate"
@@ -295,6 +321,7 @@ const projectCreateOpen = ref(false)
         @update-fixture="onUpdateFixture"
         @delete-fixture="onDeleteFixture"
         @select-fixture="(id: string | null) => selectedFixtureId = id"
+        @select-opening="(id: string | null) => selectedOpeningId = id"
       />
     </v-bottom-sheet>
 
