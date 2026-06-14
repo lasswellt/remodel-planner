@@ -65,6 +65,11 @@ export interface UseFloorplanOptions {
   onAddFixture: (roomId: string, fixture: Omit<Fixture, 'id'>) => void
   onCommitFixture: (roomId: string, fixture: Fixture) => void
   onDeleteFixture: (roomId: string, fixtureId: string) => void
+  // Double-tap/double-click on a room → open its editor (the mobile bottom sheet).
+  onRequestEdit: (roomId: string) => void
+  // Any new pointer gesture begins → close the mobile editor sheet, so selecting
+  // or dragging a room never leaves the full-screen sheet covering the canvas.
+  onPointerStart: () => void
 }
 
 function sameFixture(a: Fixture, b: Fixture): boolean {
@@ -329,11 +334,19 @@ export function useFloorplan(opts: UseFloorplanOptions) {
 
   let activePointerId: number | null = null
   let didBringToFront = false // per-gesture: only bring a dragged room to front once it actually moves
+  // Double-tap-to-edit: the last room tapped (no drag) and when, so a second tap
+  // on the same room within the window opens its editor. timeStamp is the
+  // monotonic event clock (no Date needed).
+  const DOUBLE_TAP_MS = 320
+  let lastTap: { id: string, t: number } | null = null
 
   function onPointerDown(e: PointerEvent): void {
     if (e.button !== 0 || activePointerId !== null) return
     activePointerId = e.pointerId
     didBringToFront = false
+    // Starting any gesture dismisses the mobile editor sheet (it reopens only on
+    // an explicit double-tap), so it never blocks selecting or dragging a room.
+    opts.onPointerStart()
     commitPendingNudge()
     commitPendingFixtureNudge()
     commitPendingOpeningNudge()
@@ -492,7 +505,25 @@ export function useFloorplan(opts: UseFloorplanOptions) {
       // Stay in notch mode so the user can draw multiple notches in sequence
     }
     else if (m.kind === 'moving' || m.kind === 'resizing') {
+      // A "moving" gesture that produced no actual movement is a tap on the room.
+      // overlay.id !== m.id means this room never moved this gesture (overlay may
+      // be stale from a prior one); same geo means it snapped back. Two such taps
+      // on the same room within the window → open its editor.
+      const tapped = m.kind === 'moving'
+        && (!overlay.value || overlay.value.id !== m.id || sameRect(overlay.value.geo, m.orig))
       commitOverlay(m.orig)
+      if (tapped) {
+        if (lastTap && lastTap.id === m.id && e.timeStamp - lastTap.t <= DOUBLE_TAP_MS) {
+          lastTap = null
+          opts.onRequestEdit(m.id)
+        }
+        else {
+          lastTap = { id: m.id, t: e.timeStamp }
+        }
+      }
+      else {
+        lastTap = null
+      }
     }
     else if (m.kind === 'movingFixture') {
       const o = fixtureOverlay.value

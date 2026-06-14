@@ -28,6 +28,8 @@ const emit = defineEmits<{
   addFixture: [roomId: string, fixture: Omit<Fixture, 'id'>]
   commitFixture: [roomId: string, fixture: Fixture]
   deleteFixture: [roomId: string, fixtureId: string]
+  requestEdit: [id: string]
+  pointerStart: []
 }>()
 
 const selectedId = defineModel<string | null>('selected', { default: null })
@@ -60,6 +62,8 @@ const fp = useFloorplan({
   onAddFixture: (roomId, fixture) => emit('addFixture', roomId, fixture),
   onCommitFixture: (roomId, fixture) => emit('commitFixture', roomId, fixture),
   onDeleteFixture: (roomId, fixtureId) => emit('deleteFixture', roomId, fixtureId),
+  onRequestEdit: id => emit('requestEdit', id),
+  onPointerStart: () => emit('pointerStart'),
 })
 
 // Keyboard works while the plan is on screen: arrows nudge, R rotates, Del

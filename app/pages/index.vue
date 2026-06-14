@@ -23,6 +23,10 @@ const floor = ref(1)
 const selectedId = ref<string | null>(null)
 const selectedFixtureId = ref<string | null>(null)
 const selectedOpeningId = ref<string | null>(null)
+// Mobile only: the room editor (bottom sheet) opens on an explicit double-tap,
+// not on plain selection — so moving rooms is never covered by the full sheet.
+// Desktop keeps its side panel on selection (unaffected by this flag).
+const panelOpen = ref(false)
 const openingKind = ref<OpeningKind>('door')
 const fixtureKind = ref<FixtureKind>('tub')
 const canvas = ref<InstanceType<typeof FloorplanCanvas> | null>(null)
@@ -47,9 +51,16 @@ watch(() => projectStore.currentProjectId, () => {
   selectedId.value = null
   selectedFixtureId.value = null
   selectedOpeningId.value = null
+  panelOpen.value = false
   floor.value = 1
   addedTop.value = 1
 })
+
+// Double-tap a room (mobile) → select it and raise its editor sheet.
+function onRequestEdit(id: string) {
+  selectedId.value = id
+  panelOpen.value = true
+}
 
 // --- create (draw → name + type dialog) ---
 const createOpen = ref(false)
@@ -288,6 +299,8 @@ const projectCreateOpen = ref(false)
           @add-fixture="onAddFixture"
           @commit-fixture="onCommitFixture"
           @delete-fixture="onDeleteFixture"
+          @request-edit="onRequestEdit"
+          @pointer-start="panelOpen = false"
         />
       </div>
       <div v-if="selectedRoom && mdAndUp" class="fp-panel-col">
@@ -310,16 +323,16 @@ const projectCreateOpen = ref(false)
 
     <v-bottom-sheet
       v-if="!mdAndUp"
-      :model-value="!!selectedRoom"
+      :model-value="!!selectedRoom && panelOpen"
       inset
-      @update:model-value="(v: boolean) => { if (!v) selectedId = null }"
+      @update:model-value="(v: boolean) => { if (!v) panelOpen = false }"
     >
       <FloorplanRoomSummaryPanel
         v-if="selectedRoom"
         :room="selectedRoom"
         :selected-fixture-id="selectedFixtureId"
         :selected-opening-id="selectedOpeningId"
-        @close="selectedId = null"
+        @close="panelOpen = false"
         @delete-request="onDeleteRequest"
         @rotate="onRotate"
         @activate-notch-tool="tool = 'notch'"
