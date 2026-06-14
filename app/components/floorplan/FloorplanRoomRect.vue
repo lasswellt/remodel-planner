@@ -67,6 +67,12 @@ const label = computed(
   () => (status.value === 'done' ? '✓ ' : '') + props.room.name,
 )
 
+// When a higher room overlaps this one, its effective area drops below the raw
+// footprint — surface that on the plan so the cut is visible, not just implied.
+const footprintArea = computed(() => sqFt(props.room.geometry))
+const effectiveArea = computed(() => sqFt(props.geometry))
+const bitten = computed(() => effectiveArea.value < footprintArea.value)
+
 // UX3: celebrate the moment progress crosses to 100% — not on initial load of
 // an already-done room.
 const celebrating = ref(false)
@@ -151,6 +157,16 @@ watch(
         text-anchor="middle"
         font-size="11"
       >{{ dimsLabel(geometry) }}</text>
+      <!-- Effective area drops when a higher room bites this one (overlap). -->
+      <text
+        v-if="bitten && geometry.h >= 54"
+        class="fp-room__text fp-room__text--cut"
+        :x="geometry.x + geometry.w / 2"
+        :y="geometry.y + geometry.h / 2 + 28"
+        text-anchor="middle"
+        font-size="11"
+        font-weight="600"
+      >{{ effectiveArea }} sq ft</text>
     </template>
     <!-- Too small for a label: a done room still gets its non-color channel. -->
     <text
@@ -229,6 +245,9 @@ watch(
 }
 .fp-room__text--dim {
   opacity: 0.75;
+}
+.fp-room__text--cut {
+  fill: #1565c0;
 }
 .fp-opening {
   cursor: move;

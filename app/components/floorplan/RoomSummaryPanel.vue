@@ -7,6 +7,7 @@ import {
   basisWH,
   DEFAULT_GRID_STEP,
   dimsLabelWH,
+  effectiveGeometry,
   footprintFromBasis,
   inchesToFeetInput,
   interiorWH,
@@ -79,8 +80,18 @@ async function saveName() {
 const geo = computed(() => props.room.geometry)
 const basis = computed<DimensionBasis>(() => geo.value.basis ?? 'exterior')
 const basisDims = computed(() => basisWH(geo.value))
-const grossArea = computed(() => sqFt(geo.value))
-const usableArea = computed(() => usableSqFt(geo.value))
+// Effective geometry: footprint minus the bites taken by higher rooms that
+// overlap this one, so the displayed area matches the cut shown on the plan.
+const effGeo = computed(() => {
+  const stack = roomsStore.rooms
+    .filter(r => r.floor === props.room.floor)
+    .map(r => ({ id: r.id, z: r.z, geometry: r.geometry }))
+  return effectiveGeometry({ id: props.room.id, z: props.room.z, geometry: geo.value }, stack)
+})
+const grossArea = computed(() => sqFt(effGeo.value))
+const usableArea = computed(() => usableSqFt(effGeo.value))
+// True when another room overlaps (bites) this one, so the area is reduced.
+const overlapped = computed(() => grossArea.value !== sqFt(geo.value))
 const hasWalls = computed(() => {
   const w = geo.value.walls
   return !!w && (w.n > 0 || w.s > 0 || w.e > 0 || w.w > 0)
@@ -235,7 +246,7 @@ const statusItems: { value: RoomStatus, title: string }[] = [
             @click="startDimsEdit"
           >{{ dimsLabelWH(basisDims.w, basisDims.h) }}</button>
           <span v-if="hasWalls" class="text-caption text-medium-emphasis"> ({{ basis }})</span>
-          · {{ grossArea }} sq ft<template v-if="hasWalls"> · {{ usableArea }} usable</template>
+          · {{ grossArea }} sq ft<span v-if="overlapped" class="text-medium-emphasis"> (after overlap)</span><template v-if="hasWalls"> · {{ usableArea }} usable</template>
           · floor {{ room.floor }}
         </template>
         <div v-else class="d-flex align-center ga-1 mt-1">
