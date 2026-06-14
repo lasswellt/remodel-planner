@@ -106,6 +106,10 @@ const roomsByZ = computed(() =>
 )
 
 const HANDLE = 12
+// Touch hit area around each handle (world units). The plan is fit-to-width, so
+// on a phone 1 unit ≈ 0.5px — a 12-unit handle is ~6px, far too small to grab.
+// A transparent ~40-unit target (~20px on mobile) sits under the 12-unit visual.
+const HIT = 40
 // Resize handles target the selected room; hidden while a fixture is selected
 // so its drag/rotate isn't crowded by room handles.
 const handles = computed<{ id: HandleId, x: number, y: number, cursor: string }[]>(() => {
@@ -175,9 +179,9 @@ const ghost = computed(() => props.rooms.length === 0)
       :width="fp.draftRect.value.w"
       :height="fp.draftRect.value.h"
       rx="3"
-      fill="#1565C0"
+      fill="#1E3A5F"
       fill-opacity="0.08"
-      stroke="#1565C0"
+      stroke="#1E3A5F"
       stroke-width="2"
       stroke-dasharray="6 4"
     />
@@ -220,21 +224,30 @@ const ghost = computed(() => props.rooms.length === 0)
       pointer-events="none"
     />
 
-    <!-- Resize handles for the selected room -->
-    <rect
-      v-for="h in handles"
-      :key="h.id"
-      :data-handle="h.id"
-      :x="h.x - HANDLE / 2"
-      :y="h.y - HANDLE / 2"
-      :width="HANDLE"
-      :height="HANDLE"
-      rx="2"
-      fill="#FFFFFF"
-      stroke="#1565C0"
-      stroke-width="2"
-      :style="{ cursor: h.cursor }"
-    />
+    <!-- Resize handles for the selected room: an enlarged transparent touch
+         target carries the pointer hook; the small visual sits on top. -->
+    <g v-for="h in handles" :key="h.id">
+      <rect
+        :data-handle="h.id"
+        :x="h.x - HIT / 2"
+        :y="h.y - HIT / 2"
+        :width="HIT"
+        :height="HIT"
+        fill="transparent"
+        :style="{ cursor: h.cursor }"
+      />
+      <rect
+        :x="h.x - HANDLE / 2"
+        :y="h.y - HANDLE / 2"
+        :width="HANDLE"
+        :height="HANDLE"
+        rx="2"
+        fill="#FFFFFF"
+        stroke="#1E3A5F"
+        stroke-width="2"
+        pointer-events="none"
+      />
+    </g>
 
     <!-- UX10: an empty floor teaches — ghost room + draw prompt -->
     <g

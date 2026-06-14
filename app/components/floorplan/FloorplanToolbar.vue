@@ -41,10 +41,10 @@ const dimItems: { title: string, value: DimDetail }[] = [
   <div class="d-flex flex-wrap align-center ga-2 mb-3">
     <v-btn-toggle v-model="tool" mandatory density="comfortable" variant="outlined" divided>
       <v-btn value="select" prepend-icon="mdi-cursor-default-outline" size="small" aria-label="Select and move rooms">
-        Select
+        <span class="d-none d-sm-inline">Select</span>
       </v-btn>
       <v-btn value="draw" prepend-icon="mdi-shape-rectangle-plus" size="small" aria-label="Draw a new room">
-        Draw room
+        <span class="d-none d-sm-inline">Draw room</span>
       </v-btn>
       <v-btn
         value="notch"
@@ -53,13 +53,13 @@ const dimItems: { title: string, value: DimDetail }[] = [
         :disabled="!hasSelection"
         aria-label="Cut a notch into the selected room"
       >
-        Notch
+        <span class="d-none d-sm-inline">Notch</span>
       </v-btn>
       <v-btn value="opening" prepend-icon="mdi-door" size="small" aria-label="Place a door or window">
-        Opening
+        <span class="d-none d-sm-inline">Opening</span>
       </v-btn>
       <v-btn value="fixture" prepend-icon="mdi-bathtub-outline" size="small" aria-label="Place a fixture">
-        Fixture
+        <span class="d-none d-sm-inline">Fixture</span>
       </v-btn>
     </v-btn-toggle>
 

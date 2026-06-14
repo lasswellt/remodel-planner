@@ -334,11 +334,27 @@ export function useFloorplan(opts: UseFloorplanOptions) {
 
   let activePointerId: number | null = null
   let didBringToFront = false // per-gesture: only bring a dragged room to front once it actually moves
-  // Double-tap-to-edit: the last room tapped (no drag) and when, so a second tap
-  // on the same room within the window opens its editor. timeStamp is the
-  // monotonic event clock (no Date needed).
+  // Double-tap-to-edit: the last item tapped (room/fixture/opening, no drag) and
+  // when, so a second tap on the same item within the window opens the editor.
+  // timeStamp is the monotonic event clock (no Date needed).
   const DOUBLE_TAP_MS = 320
   let lastTap: { id: string, t: number } | null = null
+  // Coalesce pointermove work to one pass per animation frame — high-Hz pointers
+  // fire far faster than paint and each move recomputes geometry + re-renders.
+  let moveRaf: number | null = null
+  let lastMoveEvent: PointerEvent | null = null
+
+  // A tap (no drag) on an item; a second tap on the same item within the window
+  // opens its room editor (the mobile bottom sheet).
+  function registerTap(itemId: string, roomId: string, e: PointerEvent): void {
+    if (lastTap && lastTap.id === itemId && e.timeStamp - lastTap.t <= DOUBLE_TAP_MS) {
+      lastTap = null
+      opts.onRequestEdit(roomId)
+    }
+    else {
+      lastTap = { id: itemId, t: e.timeStamp }
+    }
+  }
 
   function onPointerDown(e: PointerEvent): void {
     if (e.button !== 0 || activePointerId !== null) return
@@ -419,7 +435,23 @@ export function useFloorplan(opts: UseFloorplanOptions) {
     capturePointer(e)
   }
 
+  // Public handler: record the latest event and schedule one frame's work.
   function onPointerMove(e: PointerEvent): void {
+    if (mode.value.kind === 'idle' || e.pointerId !== activePointerId) return
+    lastMoveEvent = e
+    if (moveRaf === null) moveRaf = requestAnimationFrame(flushPointerMove)
+  }
+
+  function flushPointerMove(): void {
+    moveRaf = null
+    const e = lastMoveEvent
+    lastMoveEvent = null
+    if (e) applyPointerMove(e)
+  }
+
+  // The heavy per-move work (snap + overlay write → geometry recompute + render),
+  // run at most once per animation frame regardless of input rate.
+  function applyPointerMove(e: PointerEvent): void {
     const m = mode.value
     if (m.kind === 'idle' || e.pointerId !== activePointerId) return
     const pt = toWorld(e)
@@ -485,6 +517,10 @@ export function useFloorplan(opts: UseFloorplanOptions) {
 
   function onPointerUp(e: PointerEvent): void {
     if (e.pointerId !== activePointerId) return
+    // Apply any frame-coalesced final move before committing, so the commit
+    // captures the exact end position.
+    if (moveRaf !== null) { cancelAnimationFrame(moveRaf); moveRaf = null }
+    if (lastMoveEvent) { applyPointerMove(lastMoveEvent); lastMoveEvent = null }
     activePointerId = null
     const m = mode.value
     releasePointer(e)
@@ -505,35 +541,35 @@ export function useFloorplan(opts: UseFloorplanOptions) {
       // Stay in notch mode so the user can draw multiple notches in sequence
     }
     else if (m.kind === 'moving' || m.kind === 'resizing') {
-      // A "moving" gesture that produced no actual movement is a tap on the room.
-      // overlay.id !== m.id means this room never moved this gesture (overlay may
-      // be stale from a prior one); same geo means it snapped back. Two such taps
-      // on the same room within the window → open its editor.
+      // A "moving" gesture with no actual movement is a tap on the room (overlay
+      // for a different/no id, or geo snapped back to orig).
       const tapped = m.kind === 'moving'
         && (!overlay.value || overlay.value.id !== m.id || sameRect(overlay.value.geo, m.orig))
       commitOverlay(m.orig)
-      if (tapped) {
-        if (lastTap && lastTap.id === m.id && e.timeStamp - lastTap.t <= DOUBLE_TAP_MS) {
-          lastTap = null
-          opts.onRequestEdit(m.id)
-        }
-        else {
-          lastTap = { id: m.id, t: e.timeStamp }
-        }
-      }
-      else {
-        lastTap = null
-      }
+      if (tapped) registerTap(m.id, m.id, e)
+      else lastTap = null
     }
     else if (m.kind === 'movingFixture') {
       const o = fixtureOverlay.value
-      if (o && !sameFixture(o.fixture, m.orig)) opts.onCommitFixture(o.roomId, o.fixture)
-      else fixtureOverlay.value = null
+      if (o && o.fixtureId === m.fixtureId && !sameFixture(o.fixture, m.orig)) {
+        opts.onCommitFixture(o.roomId, o.fixture)
+        lastTap = null
+      }
+      else {
+        fixtureOverlay.value = null
+        registerTap(m.fixtureId, m.roomId, e) // tap → double-tap opens editor
+      }
     }
     else if (m.kind === 'movingOpening') {
       const o = openingOverlay.value
-      if (o && o.opening.offset !== m.orig.offset) opts.onCommitOpening(o.roomId, o.opening)
-      else openingOverlay.value = null
+      if (o && o.openingId === m.openingId && o.opening.offset !== m.orig.offset) {
+        opts.onCommitOpening(o.roomId, o.opening)
+        lastTap = null
+      }
+      else {
+        openingOverlay.value = null
+        registerTap(m.openingId, m.roomId, e) // tap → double-tap opens editor
+      }
     }
     mode.value = { kind: 'idle' }
     snapGuides.value = { x: null, y: null }
