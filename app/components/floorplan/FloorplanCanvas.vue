@@ -129,6 +129,7 @@ const ghost = computed(() => props.rooms.length === 0)
 </script>
 
 <template>
+  <div class="fp-canvas-wrap">
   <svg
     ref="svgEl"
     class="fp-canvas"
@@ -137,13 +138,14 @@ const ghost = computed(() => props.rooms.length === 0)
       'fp-canvas--notch': tool === 'notch',
       'fp-canvas--place': tool === 'opening' || tool === 'fixture',
     }"
-    :viewBox="`0 0 ${WORLD.w} ${WORLD.h}`"
+    :viewBox="fp.viewBox.value"
     role="application"
-    aria-label="Floorplan canvas. Use the draw tool to add rooms; arrow keys nudge the selected room."
+    aria-label="Floorplan canvas. Use the draw tool to add rooms; arrow keys nudge the selected room. Pinch or scroll to zoom."
     @pointerdown="fp.onPointerDown"
     @pointermove="fp.onPointerMove"
     @pointerup="fp.onPointerUp"
     @pointercancel="fp.onPointerUp"
+    @wheel.prevent="fp.onWheel"
   >
     <defs>
       <pattern id="fp-grid-minor" :width="gridStep" :height="gridStep" patternUnits="userSpaceOnUse">
@@ -277,9 +279,18 @@ const ghost = computed(() => props.rooms.length === 0)
       </text>
     </g>
   </svg>
+    <div class="fp-zoom">
+      <v-btn icon="mdi-magnify-plus-outline" size="small" variant="tonal" aria-label="Zoom in" @click="fp.zoomIn" />
+      <v-btn icon="mdi-magnify-minus-outline" size="small" variant="tonal" aria-label="Zoom out" @click="fp.zoomOut" />
+      <v-btn v-if="fp.zoomed.value" icon="mdi-fit-to-screen-outline" size="small" variant="tonal" aria-label="Fit plan to screen" @click="fp.resetView" />
+    </div>
+  </div>
 </template>
 
 <style scoped>
+.fp-canvas-wrap {
+  position: relative;
+}
 .fp-canvas {
   display: block;
   width: 100%;
@@ -289,6 +300,19 @@ const ghost = computed(() => props.rooms.length === 0)
   border-radius: 8px;
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   background: #fff;
+}
+.fp-zoom {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 2;
+}
+.fp-zoom :deep(.v-btn) {
+  background: rgb(var(--v-theme-surface));
+  box-shadow: 0 1px 4px rgba(16, 34, 54, 0.18);
 }
 .fp-canvas--draw,
 .fp-canvas--draw :deep(.fp-room),

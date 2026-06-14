@@ -19,6 +19,7 @@ import {
   type SnapTargets,
   snapScalar,
   wallAxis,
+  WORLD,
 } from '~/utils/geometry'
 import { FIXTURE_CATALOG } from '~/config/fixtures'
 
@@ -94,6 +95,97 @@ export function useFloorplan(opts: UseFloorplanOptions) {
   // The edge lines the in-flight gesture is currently magnetized to (rendered
   // as guides). Cleared when the gesture ends.
   const snapGuides = ref<{ x: number | null, y: number | null }>({ x: null, y: null })
+
+  // --- pan / zoom -----------------------------------------------------------
+  // viewBox-based: shrinking the viewBox zooms in, shifting it pans. toWorld()
+  // reads getScreenCTM(), which already folds in the viewBox, so all gesture
+  // math stays correct at any zoom without per-handler adjustment.
+  const MIN_VIEW_W = WORLD.w / 4 // up to 4× zoom in
+  const ASPECT = WORLD.h / WORLD.w
+  const view = ref({ x: 0, y: 0, w: WORLD.w, h: WORLD.h })
+  const viewBox = computed(() => `${view.value.x} ${view.value.y} ${view.value.w} ${view.value.h}`)
+  const zoomed = computed(() => view.value.w < WORLD.w - 0.5)
+
+  function clampView(v: { x: number, y: number, w: number, h: number }) {
+    const w = Math.min(WORLD.w, Math.max(MIN_VIEW_W, v.w))
+    const h = w * ASPECT
+    return {
+      x: Math.min(Math.max(0, v.x), WORLD.w - w),
+      y: Math.min(Math.max(0, v.y), WORLD.h - h),
+      w,
+      h,
+    }
+  }
+
+  // Zoom to a target viewBox width, keeping a world focal point fixed on screen
+  // (default focal = current view centre).
+  function zoomToWidth(newW: number, focal?: Point) {
+    const cur = view.value
+    const w = Math.min(WORLD.w, Math.max(MIN_VIEW_W, newW))
+    const f = focal ?? { x: cur.x + cur.w / 2, y: cur.y + cur.h / 2 }
+    const fx = (f.x - cur.x) / cur.w
+    const fy = (f.y - cur.y) / cur.h
+    view.value = clampView({ x: f.x - fx * w, y: f.y - fy * (w * ASPECT), w, h: w * ASPECT })
+  }
+  function zoomIn() { zoomToWidth(view.value.w / 1.4) }
+  function zoomOut() { zoomToWidth(view.value.w * 1.4) }
+  function resetView() { view.value = { x: 0, y: 0, w: WORLD.w, h: WORLD.h } }
+
+  // screen → world via the live CTM (honours viewBox + preserveAspectRatio).
+  function screenToWorld(clientX: number, clientY: number): Point {
+    const svg = opts.svgEl.value
+    const ctm = svg?.getScreenCTM()
+    if (!svg || !ctm) return { x: 0, y: 0 }
+    const p = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse())
+    return { x: p.x, y: p.y }
+  }
+
+  function onWheel(e: WheelEvent) {
+    // @wheel.prevent on the element keeps the page from scrolling; zoom toward
+    // the cursor.
+    const focal = screenToWorld(e.clientX, e.clientY)
+    zoomToWidth(view.value.w * (e.deltaY > 0 ? 1.12 : 1 / 1.12), focal)
+  }
+
+  // Two-finger pinch: tracked separately from the single-pointer gesture machine
+  // so it never corrupts a drag/resize. activePointers holds live screen coords.
+  const activePointers = new Map<number, { x: number, y: number }>()
+  let pinching = false
+  let pinchBase: { d0: number, focal: Point, w0: number } | null = null
+  const dist2 = (a: { x: number, y: number }, b: { x: number, y: number }) => Math.hypot(a.x - b.x, a.y - b.y)
+
+  function beginPinch() {
+    // Abort any in-flight single-pointer gesture WITHOUT committing — the user
+    // meant to pinch, not move.
+    mode.value = { kind: 'idle' }
+    overlay.value = null
+    fixtureOverlay.value = null
+    openingOverlay.value = null
+    draftRect.value = null
+    notchDraft.value = null
+    snapGuides.value = { x: null, y: null }
+    if (moveRaf !== null) { cancelAnimationFrame(moveRaf); moveRaf = null }
+    lastMoveEvent = null
+    activePointerId = null
+    const [a, b] = [...activePointers.values()]
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+    pinchBase = { d0: Math.max(1, dist2(a, b)), focal: screenToWorld(mid.x, mid.y), w0: view.value.w }
+    pinching = true
+  }
+
+  function updatePinch() {
+    if (!pinchBase || activePointers.size < 2) return
+    const svg = opts.svgEl.value
+    const rect = svg?.getBoundingClientRect()
+    if (!rect) return
+    const [a, b] = [...activePointers.values()]
+    const w = Math.min(WORLD.w, Math.max(MIN_VIEW_W, pinchBase.w0 / (dist2(a, b) / pinchBase.d0)))
+    const h = w * ASPECT
+    // Keep the captured focal world point under the current finger midpoint.
+    const nx = ((a.x + b.x) / 2 - rect.left) / rect.width
+    const ny = ((a.y + b.y) / 2 - rect.top) / rect.height
+    view.value = clampView({ x: pinchBase.focal.x - nx * w, y: pinchBase.focal.y - ny * h, w, h })
+  }
 
   const selectedRoom = computed(
     () => opts.rooms.value.find(r => r.id === opts.selectedId.value) ?? null,
@@ -357,6 +449,8 @@ export function useFloorplan(opts: UseFloorplanOptions) {
   }
 
   function onPointerDown(e: PointerEvent): void {
+    activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (activePointers.size >= 2) { beginPinch(); capturePointer(e); return }
     if (e.button !== 0 || activePointerId !== null) return
     activePointerId = e.pointerId
     didBringToFront = false
@@ -437,6 +531,8 @@ export function useFloorplan(opts: UseFloorplanOptions) {
 
   // Public handler: record the latest event and schedule one frame's work.
   function onPointerMove(e: PointerEvent): void {
+    if (activePointers.has(e.pointerId)) activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (pinching) { updatePinch(); return }
     if (mode.value.kind === 'idle' || e.pointerId !== activePointerId) return
     lastMoveEvent = e
     if (moveRaf === null) moveRaf = requestAnimationFrame(flushPointerMove)
@@ -516,6 +612,14 @@ export function useFloorplan(opts: UseFloorplanOptions) {
   }
 
   function onPointerUp(e: PointerEvent): void {
+    activePointers.delete(e.pointerId)
+    if (pinching) {
+      // Pinch ends when fewer than two fingers remain; the leftover finger does
+      // nothing until it lifts (activePointerId is null), so no stray drag.
+      if (activePointers.size < 2) { pinching = false; pinchBase = null }
+      releasePointer(e)
+      return
+    }
     if (e.pointerId !== activePointerId) return
     // Apply any frame-coalesced final move before committing, so the commit
     // captures the exact end position.
@@ -721,5 +825,11 @@ export function useFloorplan(opts: UseFloorplanOptions) {
     onPointerMove,
     onPointerUp,
     onKeydown,
+    viewBox,
+    zoomed,
+    zoomIn,
+    zoomOut,
+    resetView,
+    onWheel,
   }
 }

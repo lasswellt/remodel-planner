@@ -7,9 +7,13 @@ import * as mdi from '@mdi/js'
 
 const root = new URL('..', import.meta.url).pathname
 
-const names = execSync(`grep -rohE "mdi-[a-z0-9-]+" "${root}/app"`, { encoding: 'utf8' })
-  .split('\n').map(s => s.trim()).filter(Boolean)
-  .filter(n => n !== 'mdi-svg') // false positive: a list label, not an icon
+// Exclude the icon-infrastructure files: they mention `mdi-*` as import paths /
+// map keys (e.g. 'vuetify/iconsets/mdi-svg', '~/utils/mdi-icons'), not as icon
+// usages. Everything else in app/ that says mdi-* is a real icon to ship.
+const names = execSync(
+  `grep -rohE "mdi-[a-z0-9-]+" "${root}/app" --exclude=vuetify-icons.ts --exclude=mdi-icons.ts`,
+  { encoding: 'utf8' },
+).split('\n').map(s => s.trim()).filter(Boolean)
 const unique = [...new Set(names)].sort()
 
 const toConst = kebab =>
