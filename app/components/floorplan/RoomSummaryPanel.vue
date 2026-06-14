@@ -92,6 +92,21 @@ const grossArea = computed(() => sqFt(effGeo.value))
 const usableArea = computed(() => usableSqFt(effGeo.value))
 // True when another room overlaps (bites) this one, so the area is reduced.
 const overlapped = computed(() => grossArea.value !== sqFt(geo.value))
+
+// ---- stacking order (which room overlaps which) ----
+const otherFloorRooms = computed(() =>
+  roomsStore.rooms.filter(r => r.floor === props.room.floor && r.id !== props.room.id),
+)
+function bringToFront() {
+  if (otherFloorRooms.value.length === 0) return
+  const maxZ = Math.max(...otherFloorRooms.value.map(r => r.z ?? 0))
+  if ((props.room.z ?? 0) <= maxZ) roomsStore.updateRoom(props.room.id, { z: maxZ + 1 })
+}
+function sendToBack() {
+  if (otherFloorRooms.value.length === 0) return
+  const minZ = Math.min(...otherFloorRooms.value.map(r => r.z ?? 0))
+  if ((props.room.z ?? 0) >= minZ) roomsStore.updateRoom(props.room.id, { z: minZ - 1 })
+}
 const hasWalls = computed(() => {
   const w = geo.value.walls
   return !!w && (w.n > 0 || w.s > 0 || w.e > 0 || w.w > 0)
@@ -294,6 +309,30 @@ const statusItems: { value: RoomStatus, title: string }[] = [
     </v-card-item>
 
     <v-card-text class="pt-0">
+      <!-- Stacking order: control which room overlaps which (persisted as z) -->
+      <div v-if="otherFloorRooms.length > 0" class="mb-3">
+        <div class="d-flex align-center ga-2">
+          <span class="text-body-2">Stacking</span>
+          <v-btn
+            size="x-small"
+            variant="tonal"
+            prepend-icon="mdi-arrange-bring-to-front"
+            class="text-none"
+            @click="bringToFront"
+          >Bring to front</v-btn>
+          <v-btn
+            size="x-small"
+            variant="tonal"
+            prepend-icon="mdi-arrange-send-to-back"
+            class="text-none"
+            @click="sendToBack"
+          >Send to back</v-btn>
+        </div>
+        <p v-if="overlapped" class="text-caption text-medium-emphasis mt-1 mb-0">
+          This room sits under another — “Bring to front” claims the overlap and cuts the room beneath instead.
+        </p>
+      </div>
+
       <!-- Notches -->
       <div v-if="room.geometry.notches.length > 0 || true" class="mb-3">
         <div class="d-flex align-center justify-space-between mb-1">
