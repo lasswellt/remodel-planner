@@ -86,6 +86,9 @@ export const budgetLinesGroup = (db: Firestore) =>
 export const photosGroup = (db: Firestore) =>
   collectionGroup(db, 'photos').withConverter(zodConverter(Photo))
 
+export const purchasesGroup = (db: Firestore) =>
+  collectionGroup(db, 'purchases').withConverter(zodConverter(PurchaseItem))
+
 // Sharing: members subcollection, invites root, shared-project pointers
 export const membersCol = (db: Firestore, ownerUid: string, projectId: string) =>
   collection(db, 'users', ownerUid, 'projects', projectId, 'members').withConverter(zodConverter(Member))

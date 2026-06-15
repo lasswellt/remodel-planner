@@ -14,6 +14,7 @@ import { deleteObject, ref as storageRef, uploadBytesResumable } from 'firebase/
 import type { FirebaseStorage, StorageReference } from 'firebase/storage'
 import { useFirebaseStorage, useCollection, useFirestore } from 'vuefire'
 import type { Photo, PhotoStage, Room } from '~/models'
+import { PHOTO_STAGES } from '~/config/photos'
 import { photosCol, photosGroup } from '~/utils/firestore-paths'
 import { photoOriginalPath, photoThumbPath } from '~/utils/storage-paths'
 import { backoffDelay, downscaleToBlob } from '~/utils/image-downscale'
@@ -38,7 +39,15 @@ export function useRoomPhotos(roomId: () => string) {
   )
   const all = useCollection<Photo>(source, { ssrKey: 'room-photos' })
   const photos = computed(() => all.value.filter(p => !p.deletedAt))
-  const byStage = (stage: PhotoStage) => photos.value.filter(p => p.stage === stage)
+  // Group by stage once per data change so byStage() is an O(1) lookup with a
+  // stable array identity — the gallery template calls it per stage in both a
+  // v-if length check and a v-for (was a full filter scan on each call).
+  const byStageMap = computed(() => {
+    const m = new Map<PhotoStage, Photo[]>(PHOTO_STAGES.map(s => [s, [] as Photo[]]))
+    for (const p of photos.value) m.get(p.stage)?.push(p)
+    return m
+  })
+  const byStage = (stage: PhotoStage) => byStageMap.value.get(stage) ?? []
 
   return { photos, byStage }
 }
@@ -202,21 +211,28 @@ export async function sweepSoftDeletes(
   ownerUid: string,
   projectId: string,
 ): Promise<number> {
+  // Query only the actually-expired soft-deletes. deletedAt is unset on live
+  // photos, so a range filter returns exactly the purge set — instead of reading
+  // every photo in the project on each sweep. Needs the (uid, projectId,
+  // deletedAt) collection-group index.
+  const cutoff = Timestamp.fromMillis(Date.now() - SOFT_DELETE_TTL_MS)
   const snap = await getDocsFromServer(
-    query(photosGroup(db), where('uid', '==', ownerUid), where('projectId', '==', projectId)),
+    query(
+      photosGroup(db),
+      where('uid', '==', ownerUid),
+      where('projectId', '==', projectId),
+      where('deletedAt', '<=', cutoff),
+    ),
   )
-  const cutoff = Date.now() - SOFT_DELETE_TTL_MS
   let purged = 0
   for (const d of snap.docs) {
     const p = d.data()
-    if (p.deletedAt && p.deletedAt.toMillis() <= cutoff) {
-      await Promise.allSettled([
-        deleteObject(storageRef(storage, p.storagePath)),
-        deleteObject(storageRef(storage, p.thumbPath)),
-      ])
-      await deleteDoc(d.ref)
-      purged++
-    }
+    await Promise.allSettled([
+      deleteObject(storageRef(storage, p.storagePath)),
+      deleteObject(storageRef(storage, p.thumbPath)),
+    ])
+    await deleteDoc(d.ref)
+    purged++
   }
   return purged
 }

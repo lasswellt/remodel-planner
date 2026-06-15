@@ -4,9 +4,14 @@ import { PURCHASE_GROUP_SUGGESTIONS } from '~/config/purchases'
 import { formatMoney } from '~/utils/money'
 import { usePurchaseOps, useRoomPurchases } from '~/composables/usePurchases'
 
-const props = defineProps<{ room: Room }>()
+// `items`, when provided, feeds pre-fetched purchases (e.g. from the by-room
+// inspiration view's single project-wide listener) so this section opens no
+// listener of its own. Without it, it binds its own per-room listener (the
+// single-room detail page).
+const props = defineProps<{ room: Room, items?: PurchaseItem[] }>()
 
-const { purchases } = useRoomPurchases(() => props.room.id)
+const own = useRoomPurchases(() => (props.items ? '' : props.room.id))
+const purchases = computed<PurchaseItem[]>(() => props.items ?? own.purchases.value)
 const ops = usePurchaseOps()
 
 // Group → items; each group sorted by rank desc then title, groups by name.

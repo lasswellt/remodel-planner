@@ -5,7 +5,7 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing'
-import { doc, getDoc, setDoc, updateDoc, Timestamp } from 'firebase/firestore'
+import { collectionGroup, doc, getDoc, getDocs, query, setDoc, updateDoc, where, Timestamp } from 'firebase/firestore'
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest'
 
 // Security-rules suite for firestore.rules, run against the Firestore emulator
@@ -145,6 +145,24 @@ describe('membership happy path', () => {
   it('owner or member can delete the membership (revoke / leave)', async () => {
     await seed(async ctx => setDoc(doc(ctx.firestore(), memberPath(MEMBER)), member(MEMBER, 'tok-ok')))
     await assertSucceeds(import('firebase/firestore').then(m => m.deleteDoc(doc(db(OWNER), memberPath(MEMBER)))))
+  })
+})
+
+describe('purchases collection-group read', () => {
+  it('owner and member can group-read purchases; a stranger cannot', async () => {
+    await seedProject()
+    await seed(async (ctx) => {
+      const d = ctx.firestore()
+      await setDoc(doc(d, `users/${OWNER}/projects/${PROJECT}/rooms/room1/purchases/p1`), {
+        uid: OWNER, projectId: PROJECT, roomId: 'room1', title: 'Faucet', group: 'Fixtures', status: 'idea', rank: 0,
+      })
+      await setDoc(doc(d, memberPath(MEMBER)), member(MEMBER, 'tok'))
+    })
+    const groupQuery = (uid: string) =>
+      query(collectionGroup(db(uid), 'purchases'), where('uid', '==', OWNER), where('projectId', '==', PROJECT))
+    await assertSucceeds(getDocs(groupQuery(OWNER)))
+    await assertSucceeds(getDocs(groupQuery(MEMBER)))
+    await assertFails(getDocs(groupQuery(STRANGER)))
   })
 })
 

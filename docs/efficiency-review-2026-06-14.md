@@ -73,3 +73,30 @@ fixing for cleanliness and headroom, not because they drop frames today.
    `edgeSnapTargets` at gesture start.
 
 Full per-finding verifier reasoning is in the workflow output (run `wf_f777f678-d84`).
+
+## Backlog re-scope — 2026-06-15
+
+The remaining backlog was re-verified against current HEAD (after the rAF/memoization
+work shipped). Outcome:
+
+**Implemented:**
+- **#8** — `byStage` now reads a memoized per-stage `Map` in `useRoomPhotos` (was ~6
+  full-array filter passes per gallery render; template unchanged).
+- **#9** — the photo soft-delete sweep now queries `where('deletedAt','<=',cutoff)`
+  so it reads only expired docs, not the whole project's photos on every app start
+  (needs the new `photos (uid, projectId, deletedAt)` composite index).
+- **#5** — added a project-wide `useProjectPurchases` collection-group listener;
+  `InspirationByRoom` feeds it into each `PurchasesSection` via an `items` prop, so the
+  by-room view opens **one** purchases listener instead of one per room (also removes a
+  latent fixed-`ssrKey` collision). Needs a `purchases` collection-group read rule +
+  `(uid, projectId)` index. Rules test added.
+
+**Won't-fix (re-scoped):**
+- **#14** — v-img already lazy-loads offscreen images (IntersectionObserver); the
+  remaining full-res bytes are a remote third-party URL with no resized variant — a real
+  fix needs a backend thumbnail/resize proxy (out of scope).
+- **#10** — one-off project-delete path; `Promise.all` trades clean fail-fast for
+  concurrent partial-failure for a few hundred ms. Not worth it.
+- **#11** — moot after the rAF throttle (now runs ≤once/frame, not per native event).
+- **#13** — only 2 dialogs are actually `v-if`-gated (the rest are always-rendered
+  `v-model`); deferring them saves ~1–3 KB each, <1% of cold-load. Not worth the seam.
