@@ -21,6 +21,7 @@ import {
   wallAxis,
   WORLD,
 } from '~/utils/geometry'
+import { FULL_VIEW, pinchView, type ViewBox, zoomView } from '~/utils/floorplan-view'
 import { FIXTURE_CATALOG } from '~/config/fixtures'
 
 export type FloorplanTool = 'select' | 'draw' | 'notch' | 'opening' | 'fixture'
@@ -100,36 +101,14 @@ export function useFloorplan(opts: UseFloorplanOptions) {
   // viewBox-based: shrinking the viewBox zooms in, shifting it pans. toWorld()
   // reads getScreenCTM(), which already folds in the viewBox, so all gesture
   // math stays correct at any zoom without per-handler adjustment.
-  const MIN_VIEW_W = WORLD.w / 4 // up to 4× zoom in
-  const ASPECT = WORLD.h / WORLD.w
-  const view = ref({ x: 0, y: 0, w: WORLD.w, h: WORLD.h })
+  const view = ref<ViewBox>({ ...FULL_VIEW })
   const viewBox = computed(() => `${view.value.x} ${view.value.y} ${view.value.w} ${view.value.h}`)
   const zoomed = computed(() => view.value.w < WORLD.w - 0.5)
 
-  function clampView(v: { x: number, y: number, w: number, h: number }) {
-    const w = Math.min(WORLD.w, Math.max(MIN_VIEW_W, v.w))
-    const h = w * ASPECT
-    return {
-      x: Math.min(Math.max(0, v.x), WORLD.w - w),
-      y: Math.min(Math.max(0, v.y), WORLD.h - h),
-      w,
-      h,
-    }
-  }
-
-  // Zoom to a target viewBox width, keeping a world focal point fixed on screen
-  // (default focal = current view centre).
-  function zoomToWidth(newW: number, focal?: Point) {
-    const cur = view.value
-    const w = Math.min(WORLD.w, Math.max(MIN_VIEW_W, newW))
-    const f = focal ?? { x: cur.x + cur.w / 2, y: cur.y + cur.h / 2 }
-    const fx = (f.x - cur.x) / cur.w
-    const fy = (f.y - cur.y) / cur.h
-    view.value = clampView({ x: f.x - fx * w, y: f.y - fy * (w * ASPECT), w, h: w * ASPECT })
-  }
-  function zoomIn() { zoomToWidth(view.value.w / 1.4) }
-  function zoomOut() { zoomToWidth(view.value.w * 1.4) }
-  function resetView() { view.value = { x: 0, y: 0, w: WORLD.w, h: WORLD.h } }
+  function zoomTo(newW: number, focal?: Point) { view.value = zoomView(view.value, newW, focal) }
+  function zoomIn() { zoomTo(view.value.w / 1.4) }
+  function zoomOut() { zoomTo(view.value.w * 1.4) }
+  function resetView() { view.value = { ...FULL_VIEW } }
 
   // screen → world via the live CTM (honours viewBox + preserveAspectRatio).
   function screenToWorld(clientX: number, clientY: number): Point {
@@ -141,10 +120,8 @@ export function useFloorplan(opts: UseFloorplanOptions) {
   }
 
   function onWheel(e: WheelEvent) {
-    // @wheel.prevent on the element keeps the page from scrolling; zoom toward
-    // the cursor.
-    const focal = screenToWorld(e.clientX, e.clientY)
-    zoomToWidth(view.value.w * (e.deltaY > 0 ? 1.12 : 1 / 1.12), focal)
+    // @wheel.prevent on the element keeps the page from scrolling; zoom to cursor.
+    zoomTo(view.value.w * (e.deltaY > 0 ? 1.12 : 1 / 1.12), screenToWorld(e.clientX, e.clientY))
   }
 
   // Two-finger pinch: tracked separately from the single-pointer gesture machine
@@ -175,16 +152,10 @@ export function useFloorplan(opts: UseFloorplanOptions) {
 
   function updatePinch() {
     if (!pinchBase || activePointers.size < 2) return
-    const svg = opts.svgEl.value
-    const rect = svg?.getBoundingClientRect()
+    const rect = opts.svgEl.value?.getBoundingClientRect()
     if (!rect) return
     const [a, b] = [...activePointers.values()]
-    const w = Math.min(WORLD.w, Math.max(MIN_VIEW_W, pinchBase.w0 / (dist2(a, b) / pinchBase.d0)))
-    const h = w * ASPECT
-    // Keep the captured focal world point under the current finger midpoint.
-    const nx = ((a.x + b.x) / 2 - rect.left) / rect.width
-    const ny = ((a.y + b.y) / 2 - rect.top) / rect.height
-    view.value = clampView({ x: pinchBase.focal.x - nx * w, y: pinchBase.focal.y - ny * h, w, h })
+    view.value = pinchView(pinchBase, a, b, rect)
   }
 
   const selectedRoom = computed(
