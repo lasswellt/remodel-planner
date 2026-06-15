@@ -188,15 +188,6 @@ export const useProjectStore = defineStore('project', () => {
     const existing = await getDoc(memberDoc(db, invite.ownerUid, invite.projectId, me.uid))
     const alreadyMember = existing.exists()
 
-    // zodConverter strips the id field on write, so include it here.
-    const member: Member = {
-      id: me.uid,
-      uid: me.uid,
-      role: 'editor',
-      email: me.email ?? undefined,
-      displayName: me.displayName ?? undefined,
-      addedAt: Timestamp.now(),
-    }
     const sharedRef: SharedProjectRef = {
       id: invite.projectId,
       ownerUid: invite.ownerUid,
@@ -204,7 +195,22 @@ export const useProjectStore = defineStore('project', () => {
       projectName: invite.projectName,
       role: 'editor',
     }
-    await setDoc(memberDoc(db, invite.ownerUid, invite.projectId, me.uid), member)
+    // Only create the membership on a fresh join. Membership docs are immutable
+    // (rules deny update), and re-accepting a still-valid link should not try to
+    // rewrite one. The token is recorded so rules can validate the grant.
+    if (!alreadyMember) {
+      // zodConverter strips the id field on write, so include it here.
+      const member: Member = {
+        id: me.uid,
+        uid: me.uid,
+        role: 'editor',
+        inviteToken: token,
+        email: me.email ?? undefined,
+        displayName: me.displayName ?? undefined,
+        addedAt: Timestamp.now(),
+      }
+      await setDoc(memberDoc(db, invite.ownerUid, invite.projectId, me.uid), member)
+    }
     await setDoc(sharedProjectDoc(db, me.uid, invite.projectId), sharedRef)
 
     return { ownerUid: invite.ownerUid, projectId: invite.projectId, alreadyMember }

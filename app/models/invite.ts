@@ -7,6 +7,10 @@ export const Member = z.object({
   id: z.string().min(1),
   uid: z.string().min(1),
   role: z.literal('editor'),
+  // The invite token this membership was granted by. Rules require it on create
+  // and validate it against the (unexpired, matching) invite. Optional for
+  // read back-compat with member docs created before this was enforced.
+  inviteToken: z.string().min(1).optional(),
   email: z.string().optional(),
   displayName: z.string().optional(),
   addedAt: FirestoreTimestamp,

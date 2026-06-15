@@ -27,6 +27,17 @@ service cloud.firestore {
         exists(/databases/$(database)/documents/users/$(ownerUid)/projects/$(projectId)/members/$(request.auth.uid));
     }
 
+    // A membership may only be created if it is backed by an existing, unexpired
+    // invite for THIS project. Enforced server-side so revoked/expired invites —
+    // and direct writes that skip the in-app accept flow — cannot grant access.
+    function inviteValidFor(ownerUid, projectId, token) {
+      let path = /databases/$(database)/documents/invites/$(token);
+      return token is string && exists(path)
+        && get(path).data.ownerUid == ownerUid
+        && get(path).data.projectId == projectId
+        && get(path).data.expiresAt > request.time;
+    }
+
     // ---- per-entity field validation ----
     function validRoom() {
       let d = request.resource.data;
@@ -137,11 +148,18 @@ service cloud.firestore {
           && request.resource.data.totalBudgetCents is int;
         allow delete: if isOwner(uid);
 
-        // Members subcollection. A user can write their own membership doc
-        // (accepting an invite). Only the project owner can delete others'.
+        // Members subcollection. A user creates their own membership doc when
+        // accepting an invite — but only with a valid, unexpired invite token for
+        // this project (see inviteValidFor). Membership is immutable (no update);
+        // only the owner or the member themselves can delete it.
         match /members/{memberUid} {
           allow read: if isOwner(uid) || request.auth.uid == memberUid;
-          allow create: if request.auth != null && request.auth.uid == memberUid;
+          allow create: if request.auth != null
+            && request.auth.uid == memberUid
+            && request.resource.data.uid == memberUid
+            && request.resource.data.role == 'editor'
+            && request.resource.data.inviteToken is string
+            && inviteValidFor(uid, projectId, request.resource.data.inviteToken);
           allow delete: if isOwner(uid) || (request.auth != null && request.auth.uid == memberUid);
         }
 
