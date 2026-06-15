@@ -15,6 +15,9 @@ export const PurchaseItem = OwnerScoped.extend({
   vendor: z.string().optional(),
   url: z.string().url().optional(),
   imageUrl: z.string().url().optional(),
+  // Storage path of an uploaded item photo (vs an external imageUrl scraped from
+  // a product page). Present only for uploads, so it can be cleaned up on delete.
+  imagePath: z.string().optional(),
   priceCents: Cents.optional(),
   notes: z.string().optional(),
 })

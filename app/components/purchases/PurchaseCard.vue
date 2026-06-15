@@ -16,18 +16,73 @@ function onRank(value: number | string | null) {
 function onStatus(status: PurchaseStatus) {
   ops.setStatus(props.item, status)
 }
+
+// Upload (or replace) a photo of the item from the camera / photo library.
+const fileInput = ref<HTMLInputElement | null>(null)
+const uploading = ref(false)
+function pickPhoto() {
+  fileInput.value?.click()
+}
+async function onPhoto(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = '' // reset so picking the same file again still fires change
+  if (!file) return
+  uploading.value = true
+  try {
+    await ops.uploadImage(props.item, file)
+  }
+  finally {
+    uploading.value = false
+  }
+}
 </script>
 
 <template>
   <v-card variant="outlined" class="h-100 d-flex flex-column">
-    <v-img v-if="item.imageUrl" :src="item.imageUrl" :alt="item.title" :aspect-ratio="4 / 3" cover>
-      <template #error>
-        <div class="img-fallback"><v-icon icon="mdi-image-off-outline" /></div>
-      </template>
-    </v-img>
-    <div v-else class="img-fallback"><v-icon icon="mdi-cart-outline" size="32" /></div>
+    <!-- Item photo: shown only when set, with replace / remove controls. -->
+    <div v-if="item.imageUrl" class="pur-photo">
+      <v-img :src="item.imageUrl" :alt="item.title" :aspect-ratio="4 / 3" cover>
+        <template #error>
+          <div class="img-fallback"><v-icon icon="mdi-image-off-outline" /></div>
+        </template>
+      </v-img>
+      <div class="pur-photo__actions">
+        <v-btn
+          icon="mdi-camera-outline"
+          size="x-small"
+          variant="flat"
+          :loading="uploading"
+          aria-label="Replace photo"
+          @click="pickPhoto"
+        />
+        <v-btn
+          icon="mdi-delete-outline"
+          size="x-small"
+          variant="flat"
+          color="error"
+          aria-label="Remove photo"
+          @click="ops.removeImage(item)"
+        />
+      </div>
+    </div>
 
     <div class="pa-3 d-flex flex-column flex-grow-1">
+      <!-- No photo yet → a compact upload affordance (was a full-size empty box). -->
+      <button
+        v-if="!item.imageUrl"
+        type="button"
+        class="pur-photo__add mb-3"
+        :disabled="uploading"
+        @click="pickPhoto"
+      >
+        <v-progress-circular v-if="uploading" indeterminate size="18" width="2" />
+        <template v-else>
+          <v-icon icon="mdi-camera-plus-outline" size="small" />
+          <span>Add photo</span>
+        </template>
+      </button>
+
       <div class="d-flex align-center ga-2">
         <a
           v-if="item.url"
@@ -79,6 +134,7 @@ function onStatus(status: PurchaseStatus) {
         <v-btn icon="mdi-delete-outline" size="x-small" variant="text" color="error" aria-label="Delete" @click="ops.remove(item)" />
       </div>
     </div>
+    <input ref="fileInput" type="file" accept="image/*" capture="environment" hidden @change="onPhoto">
   </v-card>
 </template>
 
@@ -90,6 +146,43 @@ function onStatus(status: PurchaseStatus) {
   aspect-ratio: 4 / 3;
   background: rgba(127, 127, 127, 0.08);
   color: rgba(127, 127, 127, 0.6);
+}
+.pur-photo {
+  position: relative;
+}
+.pur-photo__actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 4px;
+}
+.pur-photo__actions :deep(.v-btn) {
+  background: rgba(255, 255, 255, 0.9);
+}
+/* Compact "Add photo" affordance — replaces the old full-size empty image box. */
+.pur-photo__add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  border: 1px dashed rgba(30, 58, 95, 0.28);
+  border-radius: 8px;
+  background: rgba(30, 58, 95, 0.03);
+  color: rgb(var(--v-theme-primary));
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.pur-photo__add:hover {
+  background: rgba(30, 58, 95, 0.07);
+}
+.pur-photo__add:disabled {
+  cursor: default;
+  opacity: 0.7;
 }
 .min-width-0 {
   min-width: 0;

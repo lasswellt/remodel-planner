@@ -1,11 +1,17 @@
-import { deleteDoc, doc, query, setDoc, updateDoc, where } from 'firebase/firestore'
+import { deleteDoc, deleteField, doc, query, setDoc, updateDoc, where } from 'firebase/firestore'
 import type { UpdateData } from 'firebase/firestore'
-import { useCollection, useFirestore } from 'vuefire'
+import { deleteObject, getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage'
+import { useCollection, useFirebaseStorage, useFirestore } from 'vuefire'
 import type { PurchaseItem, PurchaseStatus } from '~/models'
 import { purchasesCol, purchasesGroup } from '~/utils/firestore-paths'
+import { purchaseImagePath } from '~/utils/storage-paths'
+import { downscaleToBlob } from '~/utils/image-downscale'
 import { useProjectStore } from '~/stores/project'
 import { useSyncStore } from '~/stores/sync'
 import { useUndoStore } from '~/stores/undo'
+
+// Item photos are downscaled before upload — full-res isn't needed for a card.
+const PURCHASE_IMAGE_EDGE = 1280
 
 // Per-room purchase items / ideas, bound directly. Grouped + ranked in the UI.
 // Used by the single-room detail page. A falsy roomId yields a null source (no
@@ -50,11 +56,33 @@ export type NewPurchaseFields = Omit<PurchaseItem, 'id' | 'uid' | 'projectId' | 
 
 export function usePurchaseOps() {
   const db = useFirestore()
+  const storage = useFirebaseStorage()
   const projectStore = useProjectStore()
   const sync = useSyncStore()
   const undo = useUndoStore()
 
   const refFor = (p: PurchaseItem) => doc(purchasesCol(db, p.uid, p.projectId, p.roomId), p.id)
+
+  // Upload (and replace) a photo of the item: downscale, store at the item's
+  // fixed path (overwrites any prior), then persist its download URL + path.
+  async function uploadImage(item: PurchaseItem, file: File): Promise<void> {
+    const blob = await downscaleToBlob(file, PURCHASE_IMAGE_EDGE)
+    const path = purchaseImagePath(item.uid, item.projectId, item.roomId, item.id)
+    const sref = storageRef(storage, path)
+    await uploadBytes(sref, blob, { contentType: 'image/jpeg' })
+    const imageUrl = await getDownloadURL(sref)
+    await sync.track(() => updateDoc(refFor(item), { imageUrl, imagePath: path } as UpdateData<PurchaseItem>))
+  }
+
+  async function removeImage(item: PurchaseItem): Promise<void> {
+    if (item.imagePath) {
+      try { await deleteObject(storageRef(storage, item.imagePath)) }
+      catch { /* object already gone */ }
+    }
+    await sync.track(() =>
+      updateDoc(refFor(item), { imageUrl: deleteField(), imagePath: deleteField() } as UpdateData<PurchaseItem>),
+    )
+  }
 
   function add(roomId: string, fields: NewPurchaseFields): void {
     const ownerUid = projectStore.activeOwnerUid
@@ -85,5 +113,5 @@ export function usePurchaseOps() {
     void sync.track(() => updateDoc(refFor(item), { status } as UpdateData<PurchaseItem>))
   }
 
-  return { add, save, remove, setRank, setStatus }
+  return { add, save, remove, setRank, setStatus, uploadImage, removeImage }
 }

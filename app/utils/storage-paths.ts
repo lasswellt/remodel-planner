@@ -13,3 +13,8 @@ export function photoOriginalPath(uid: string, projectId: string, roomId: string
 export function photoThumbPath(uid: string, projectId: string, roomId: string, photoId: string): string {
   return `${photoDir(uid, projectId, roomId, photoId)}/thumb`
 }
+
+// One uploaded photo per purchase item (a single object, overwritten on replace).
+export function purchaseImagePath(uid: string, projectId: string, roomId: string, purchaseId: string): string {
+  return `users/${uid}/projects/${projectId}/rooms/${roomId}/purchases/${purchaseId}/image`
+}
