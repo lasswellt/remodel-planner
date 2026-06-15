@@ -6,7 +6,7 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['tests/firestore-rules.test.ts'],
+    include: ['tests/firestore-rules.test.ts', 'tests/storage-rules.test.ts'],
     // Rules tests share one emulator + seed/clear it between cases; keep them serial.
     fileParallelism: false,
     testTimeout: 15000,

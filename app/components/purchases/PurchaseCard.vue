@@ -36,6 +36,26 @@ async function onPhoto(e: Event) {
     uploading.value = false
   }
 }
+
+// Receipt upload (photo or PDF) — relevant once the item is purchased.
+const receiptInput = ref<HTMLInputElement | null>(null)
+const uploadingReceipt = ref(false)
+function pickReceipt() {
+  receiptInput.value?.click()
+}
+async function onReceipt(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  uploadingReceipt.value = true
+  try {
+    await ops.uploadReceipt(props.item, file)
+  }
+  finally {
+    uploadingReceipt.value = false
+  }
+}
 </script>
 
 <template>
@@ -117,6 +137,32 @@ async function onPhoto(e: Event) {
         <span v-if="item.priceCents != null" class="font-weight-medium text-high-emphasis">{{ formatMoney(item.priceCents) }}</span>
       </div>
       <p v-if="item.notes" class="text-caption text-medium-emphasis mt-1 mb-0">{{ item.notes }}</p>
+
+      <!-- Receipt: prompt once purchased; show a view/remove row when attached. -->
+      <div v-if="item.receiptUrl || item.status === 'purchased'" class="mt-2">
+        <div v-if="item.receiptUrl" class="d-flex align-center ga-1">
+          <a
+            :href="item.receiptUrl"
+            target="_blank"
+            rel="noopener"
+            class="text-caption text-primary text-decoration-none d-inline-flex align-center ga-1 min-width-0 text-truncate"
+          >
+            <v-icon :icon="item.receiptType === 'application/pdf' ? 'mdi-file-pdf-box' : 'mdi-receipt-text-outline'" size="small" />
+            View receipt
+            <v-icon icon="mdi-open-in-new" size="x-small" />
+          </a>
+          <v-spacer />
+          <v-btn icon="mdi-close" size="x-small" variant="text" aria-label="Remove receipt" @click="ops.removeReceipt(item)" />
+        </div>
+        <button v-else type="button" class="pur-receipt__add" :disabled="uploadingReceipt" @click="pickReceipt">
+          <v-progress-circular v-if="uploadingReceipt" indeterminate size="16" width="2" />
+          <template v-else>
+            <v-icon icon="mdi-receipt-text-plus-outline" size="small" />
+            <span>Add receipt (photo or PDF)</span>
+          </template>
+        </button>
+      </div>
+
       <v-spacer />
       <div class="d-flex align-center mt-2">
         <v-rating
@@ -135,6 +181,7 @@ async function onPhoto(e: Event) {
       </div>
     </div>
     <input ref="fileInput" type="file" accept="image/*" capture="environment" hidden @change="onPhoto">
+    <input ref="receiptInput" type="file" accept="image/*,application/pdf" hidden @change="onReceipt">
   </v-card>
 </template>
 
@@ -181,6 +228,30 @@ async function onPhoto(e: Event) {
   background: rgba(30, 58, 95, 0.07);
 }
 .pur-photo__add:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+/* Receipt prompt — slimmer/quieter than the photo one. */
+.pur-receipt__add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 36px;
+  border: 1px dashed rgba(30, 58, 95, 0.22);
+  border-radius: 8px;
+  background: transparent;
+  color: rgb(var(--v-theme-secondary));
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.pur-receipt__add:hover {
+  background: rgba(30, 58, 95, 0.05);
+}
+.pur-receipt__add:disabled {
   cursor: default;
   opacity: 0.7;
 }

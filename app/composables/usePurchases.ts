@@ -4,7 +4,7 @@ import { deleteObject, getDownloadURL, ref as storageRef, uploadBytes } from 'fi
 import { useCollection, useFirebaseStorage, useFirestore } from 'vuefire'
 import type { PurchaseItem, PurchaseStatus } from '~/models'
 import { purchasesCol, purchasesGroup } from '~/utils/firestore-paths'
-import { purchaseImagePath } from '~/utils/storage-paths'
+import { purchaseImagePath, purchaseReceiptPath } from '~/utils/storage-paths'
 import { downscaleToBlob } from '~/utils/image-downscale'
 import { useProjectStore } from '~/stores/project'
 import { useSyncStore } from '~/stores/sync'
@@ -12,6 +12,8 @@ import { useUndoStore } from '~/stores/undo'
 
 // Item photos are downscaled before upload — full-res isn't needed for a card.
 const PURCHASE_IMAGE_EDGE = 1280
+// Receipts downscale less aggressively so small printed text stays legible.
+const RECEIPT_IMAGE_EDGE = 2400
 
 // Per-room purchase items / ideas, bound directly. Grouped + ranked in the UI.
 // Used by the single-room detail page. A falsy roomId yields a null source (no
@@ -84,6 +86,38 @@ export function usePurchaseOps() {
     )
   }
 
+  // Receipt for a purchased item: a photo (downscaled) or a PDF (as-is).
+  async function uploadReceipt(item: PurchaseItem, file: File): Promise<void> {
+    const isPdf = file.type === 'application/pdf'
+    const path = purchaseReceiptPath(item.uid, item.projectId, item.roomId, item.id)
+    const sref = storageRef(storage, path)
+    if (isPdf) {
+      await uploadBytes(sref, file, { contentType: 'application/pdf' })
+    }
+    else {
+      const blob = await downscaleToBlob(file, RECEIPT_IMAGE_EDGE)
+      await uploadBytes(sref, blob, { contentType: 'image/jpeg' })
+    }
+    const receiptUrl = await getDownloadURL(sref)
+    await sync.track(() => updateDoc(refFor(item), {
+      receiptUrl,
+      receiptPath: path,
+      receiptType: isPdf ? 'application/pdf' : 'image/jpeg',
+    } as UpdateData<PurchaseItem>))
+  }
+
+  async function removeReceipt(item: PurchaseItem): Promise<void> {
+    if (item.receiptPath) {
+      try { await deleteObject(storageRef(storage, item.receiptPath)) }
+      catch { /* object already gone */ }
+    }
+    await sync.track(() => updateDoc(refFor(item), {
+      receiptUrl: deleteField(),
+      receiptPath: deleteField(),
+      receiptType: deleteField(),
+    } as UpdateData<PurchaseItem>))
+  }
+
   function add(roomId: string, fields: NewPurchaseFields): void {
     const ownerUid = projectStore.activeOwnerUid
     const projectId = projectStore.currentProjectId
@@ -113,5 +147,5 @@ export function usePurchaseOps() {
     void sync.track(() => updateDoc(refFor(item), { status } as UpdateData<PurchaseItem>))
   }
 
-  return { add, save, remove, setRank, setStatus, uploadImage, removeImage }
+  return { add, save, remove, setRank, setStatus, uploadImage, removeImage, uploadReceipt, removeReceipt }
 }

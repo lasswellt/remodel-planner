@@ -18,3 +18,8 @@ export function photoThumbPath(uid: string, projectId: string, roomId: string, p
 export function purchaseImagePath(uid: string, projectId: string, roomId: string, purchaseId: string): string {
   return `users/${uid}/projects/${projectId}/rooms/${roomId}/purchases/${purchaseId}/image`
 }
+
+// One receipt per purchase item (image or PDF; overwritten on replace).
+export function purchaseReceiptPath(uid: string, projectId: string, roomId: string, purchaseId: string): string {
+  return `users/${uid}/projects/${projectId}/rooms/${roomId}/purchases/${purchaseId}/receipt`
+}

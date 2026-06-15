@@ -18,6 +18,11 @@ export const PurchaseItem = OwnerScoped.extend({
   // Storage path of an uploaded item photo (vs an external imageUrl scraped from
   // a product page). Present only for uploads, so it can be cleaned up on delete.
   imagePath: z.string().optional(),
+  // Receipt (uploaded once purchased): a photo or PDF in Storage. receiptType is
+  // the content type so the UI can show a PDF vs image affordance.
+  receiptUrl: z.string().url().optional(),
+  receiptPath: z.string().optional(),
+  receiptType: z.string().optional(),
   priceCents: Cents.optional(),
   notes: z.string().optional(),
 })

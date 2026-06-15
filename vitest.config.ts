@@ -16,6 +16,6 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.{test,spec}.ts'],
-    exclude: [...configDefaults.exclude, 'tests/firestore-rules.test.ts'],
+    exclude: [...configDefaults.exclude, 'tests/*-rules.test.ts'],
   },
 })
