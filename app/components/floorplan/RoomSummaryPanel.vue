@@ -12,6 +12,7 @@ import {
   interiorWH,
   parseFeetToInches,
   sqFt,
+  stackZ,
   usableSqFt,
   WORLD,
 } from '~/utils/geometry'
@@ -84,8 +85,8 @@ const basisDims = computed(() => basisWH(geo.value))
 const effGeo = computed(() => {
   const stack = roomsStore.rooms
     .filter(r => r.floor === props.room.floor)
-    .map(r => ({ id: r.id, z: r.z, geometry: r.geometry }))
-  return effectiveGeometry({ id: props.room.id, z: props.room.z, geometry: geo.value }, stack)
+    .map(r => ({ id: r.id, z: stackZ(r.z, r.pinned), geometry: r.geometry }))
+  return effectiveGeometry({ id: props.room.id, z: stackZ(props.room.z, props.room.pinned), geometry: geo.value }, stack)
 })
 const grossArea = computed(() => sqFt(effGeo.value))
 const usableArea = computed(() => usableSqFt(effGeo.value))
@@ -105,6 +106,11 @@ function sendToBack() {
   if (otherFloorRooms.value.length === 0) return
   const minZ = Math.min(...otherFloorRooms.value.map(r => r.z ?? 0))
   if ((props.room.z ?? 0) >= minZ) roomsStore.updateRoom(props.room.id, { z: minZ - 1 })
+}
+// "Keep on top": pin so this room always paints above unpinned rooms, no matter
+// which room is dragged over it.
+function togglePin() {
+  roomsStore.updateRoom(props.room.id, { pinned: !props.room.pinned })
 }
 const hasWalls = computed(() => {
   const w = geo.value.walls
@@ -362,7 +368,7 @@ const statusItems: { value: RoomStatus, title: string }[] = [
     <v-card-text class="pt-0">
       <!-- Stacking order: control which room overlaps which (persisted as z) -->
       <div v-if="otherFloorRooms.length > 0" class="mb-3">
-        <div class="d-flex align-center ga-2">
+        <div class="d-flex align-center flex-wrap ga-2">
           <span class="text-body-2">Stacking</span>
           <v-btn
             size="x-small"
@@ -378,8 +384,19 @@ const statusItems: { value: RoomStatus, title: string }[] = [
             class="text-none"
             @click="sendToBack"
           >Send to back</v-btn>
+          <v-btn
+            size="x-small"
+            :variant="room.pinned ? 'flat' : 'tonal'"
+            :color="room.pinned ? 'primary' : undefined"
+            :prepend-icon="room.pinned ? 'mdi-pin' : 'mdi-pin-outline'"
+            class="text-none"
+            @click="togglePin"
+          >{{ room.pinned ? 'On top' : 'Keep on top' }}</v-btn>
         </div>
-        <p v-if="overlapped" class="text-caption text-medium-emphasis mt-1 mb-0">
+        <p v-if="room.pinned" class="text-caption text-medium-emphasis mt-1 mb-0">
+          Pinned — always stays above other rooms, even when one is dragged over it.
+        </p>
+        <p v-else-if="overlapped" class="text-caption text-medium-emphasis mt-1 mb-0">
           This room sits under another — “Bring to front” claims the overlap and cuts the room beneath instead.
         </p>
       </div>

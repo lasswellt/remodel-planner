@@ -138,5 +138,8 @@ export const Room = OwnerScoped.extend({
   // bites a (non-destructive) notch out of any lower room it covers. Default 0;
   // grabbing a room to move it brings it to the front.
   z: z.number().default(0),
+  // "Keep on top": a pinned room always stacks above every unpinned room (no
+  // matter their z), so dragging another room over it never covers it.
+  pinned: z.boolean().optional(),
 })
 export type Room = z.infer<typeof Room>

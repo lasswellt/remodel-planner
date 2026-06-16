@@ -2,7 +2,7 @@
 import type { Fixture, FixtureKind, Geometry, Opening, OpeningKind, Room } from '~/models'
 import type { DimDetail, FloorplanTool, HandleId } from '~/composables/useFloorplan'
 import { GRID_MAJOR, GRID_MINOR, PLAN_BG } from '~/utils/floorplan-style'
-import { effectiveGeometry, footprintRect, WORLD } from '~/utils/geometry'
+import { DRAG_Z, effectiveGeometry, footprintRect, stackZ, WORLD } from '~/utils/geometry'
 import type { Rect } from '~/utils/geometry'
 
 // The SVG floorplan surface: grid, room rects (with live overlap auto-cut),
@@ -76,14 +76,15 @@ useEventListener(window, 'keydown', fp.onKeydown)
 defineExpose({ rotateRoom: fp.rotateSelected })
 
 // Live stacking snapshot: each room with its live geometry and effective z. The
-// room currently being dragged is forced topmost so it bites overlaps the
-// instant it is grabbed, without waiting for the async bring-to-front write.
+// room currently being dragged is forced to the top of its group so it bites
+// overlaps the instant it is grabbed; a pinned room always outranks unpinned
+// ones (stackZ), so dragging another room can never cover a pinned room.
 const liveStack = computed(() => {
   const movingId = fp.overlay.value?.id ?? null
   return props.rooms.map((room, i) => ({
     room,
     i,
-    z: room.id === movingId ? Number.MAX_SAFE_INTEGER : (room.z ?? 0),
+    z: stackZ(room.id === movingId ? DRAG_Z : (room.z ?? 0), room.pinned),
     geometry: fp.liveGeometry(room),
   }))
 })

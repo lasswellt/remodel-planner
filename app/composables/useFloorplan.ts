@@ -18,6 +18,7 @@ import {
   snapTo,
   type SnapTargets,
   snapScalar,
+  stackZ,
   wallAxis,
   WORLD,
 } from '~/utils/geometry'
@@ -250,7 +251,7 @@ export function useFloorplan(opts: UseFloorplanOptions) {
     let bestZ = -Infinity
     opts.rooms.value.forEach((r, i) => {
       if (!pointInRect(pt, footprintRect(liveGeometry(r)))) return
-      const z = (r.z ?? 0) + i / 1e6
+      const z = stackZ(r.z, r.pinned) + i / 1e6
       if (z >= bestZ) { bestZ = z; best = r }
     })
     return best
@@ -342,7 +343,7 @@ export function useFloorplan(opts: UseFloorplanOptions) {
     const hits = opts.rooms.value
       .map((room, i) => {
         const hit = openingHitTest(room.geometry, pt, width, step)
-        return hit ? { room, wall: hit.wall, offset: hit.offset, rank: (room.z ?? 0) + i / 1e6 } : null
+        return hit ? { room, wall: hit.wall, offset: hit.offset, rank: stackZ(room.z, room.pinned) + i / 1e6 } : null
       })
       .filter((h): h is { room: Room, wall: WallSide, offset: number, rank: number } => h !== null)
     if (hits.length === 0) return

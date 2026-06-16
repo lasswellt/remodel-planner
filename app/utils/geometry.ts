@@ -358,6 +358,15 @@ export function footprintRect(geo: Geometry): Rect {
   return { x: geo.x, y: geo.y, w: geo.w, h: geo.h }
 }
 
+// Stacking key. A pinned room always sorts above any unpinned room regardless of
+// z; a dragged room (pass DRAG_Z) tops its own pinned/unpinned group. PINNED_Z is
+// far above any realistic stored z; DRAG_Z sits between stored z and PINNED_Z.
+export const PINNED_Z = 1e9
+export const DRAG_Z = 1e6
+export function stackZ(z: number | undefined, pinned?: boolean): number {
+  return (pinned ? PINNED_Z : 0) + (z ?? 0)
+}
+
 // Overlap of two world rects, or null if they don't intersect (touching edges
 // don't count — a flush-tucked room cuts nothing).
 function rectIntersect(a: Rect, b: Rect): Rect | null {
