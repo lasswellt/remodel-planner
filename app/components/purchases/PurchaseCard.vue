@@ -180,7 +180,7 @@ async function onReceipt(e: Event) {
         <v-btn icon="mdi-delete-outline" size="x-small" variant="text" color="error" aria-label="Delete" @click="ops.remove(item)" />
       </div>
     </div>
-    <input ref="fileInput" type="file" accept="image/*" capture="environment" hidden @change="onPhoto">
+    <input ref="fileInput" type="file" accept="image/*" hidden @change="onPhoto">
     <input ref="receiptInput" type="file" accept="image/*,application/pdf" hidden @change="onReceipt">
   </v-card>
 </template>

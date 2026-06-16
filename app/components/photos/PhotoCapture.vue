@@ -2,8 +2,8 @@
 import type { PhotoStage } from '~/models'
 import { PHOTO_STAGES, PHOTO_STAGE_LABELS } from '~/config/photos'
 
-// Mobile-first capture: <input capture> opens the camera on a phone; desktop
-// gets drag-drop. Non-image files are filtered out before they reach upload.
+// Mobile-first capture: tapping the input lets a phone take a photo or pick from
+// the library; desktop gets drag-drop. Non-image files are filtered before upload.
 const emit = defineEmits<{ files: [File[], PhotoStage] }>()
 
 const stage = ref<PhotoStage>('before')
@@ -41,7 +41,6 @@ function onDrop(e: DragEvent) {
       ref="input"
       type="file"
       accept="image/*"
-      capture="environment"
       multiple
       class="d-none"
       @change="onInput"
