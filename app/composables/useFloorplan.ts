@@ -266,24 +266,11 @@ export function useFloorplan(opts: UseFloorplanOptions) {
 
   // Magnetize a translated room: snap whichever of its left/right (top/bottom)
   // edges is closest to a target line, shifting the whole room so it tucks flush
-  // against another room — including into a notch corner.
-  // Does this footprint overlap another room? (interior overlap, not just touching)
-  function overlapsExisting(geo: Geometry, excludeId: string): boolean {
-    return opts.rooms.value.some((r) => {
-      if (r.id === excludeId) return false
-      const o = liveGeometry(r)
-      return geo.x < o.x + o.w && geo.x + geo.w > o.x && geo.y < o.y + o.h && geo.y + geo.h > o.y
-    })
-  }
-
+  // against another room — including into a notch corner. Snapping stays active
+  // even while the room overlaps/sits inside another (within the small SNAP_TOL),
+  // so you can still align stacked rooms; positions further than the tolerance
+  // from any edge remain free.
   function applyMoveSnap(geo: Geometry, excludeId: string): Geometry {
-    // Once the room is dragged onto another, stop magnetizing its edges — let it
-    // overlap freely so the auto-cut can bite. Edge-snap only tucks rooms flush
-    // while they are still apart.
-    if (overlapsExisting(geo, excludeId)) {
-      snapGuides.value = { x: null, y: null }
-      return clampToWorld(geo)
-    }
     const t = edgeSnapTargets(opts.rooms.value, excludeId)
     const left = snapScalar(geo.x, t.xs)
     const right = snapScalar(geo.x + geo.w, t.xs)

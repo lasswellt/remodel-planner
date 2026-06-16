@@ -2,7 +2,8 @@
 import type { Fixture, FixtureKind, Geometry, Opening, OpeningKind, Room } from '~/models'
 import type { DimDetail, FloorplanTool, HandleId } from '~/composables/useFloorplan'
 import { GRID_MAJOR, GRID_MINOR, PLAN_BG } from '~/utils/floorplan-style'
-import { effectiveGeometry, WORLD } from '~/utils/geometry'
+import { effectiveGeometry, footprintRect, WORLD } from '~/utils/geometry'
+import type { Rect } from '~/utils/geometry'
 
 // The SVG floorplan surface: grid, room rects (with live overlap auto-cut),
 // walls/openings/fixtures, draw preview, resize handles, and the ghost-room
@@ -105,6 +106,28 @@ const roomsByZ = computed(() =>
   [...liveStack.value].sort((a, b) => (a.z - b.z) || (a.i - b.i)).map(s => s.room),
 )
 
+// For each room, the footprints of the rooms painted on top of it that overlap
+// it — used to suppress that room's dimension labels where a higher room covers
+// it (so dims "stop" at a room over a room instead of colliding underneath it).
+const coveredByRoom = computed<Record<string, Rect[]>>(() => {
+  const order = roomsByZ.value // bottom → top
+  const rectById: Record<string, Rect> = {}
+  for (const s of liveStack.value) rectById[s.room.id] = footprintRect(s.geometry)
+  const map: Record<string, Rect[]> = {}
+  for (let i = 0; i < order.length; i++) {
+    const r = rectById[order[i]!.id]
+    const covers: Rect[] = []
+    if (r) {
+      for (let j = i + 1; j < order.length; j++) {
+        const o = rectById[order[j]!.id]
+        if (o && r.x < o.x + o.w && r.x + r.w > o.x && r.y < o.y + o.h && r.y + r.h > o.y) covers.push(o)
+      }
+    }
+    map[order[i]!.id] = covers
+  }
+  return map
+})
+
 const HANDLE = 12
 // Touch hit area around each handle (world units). The plan is fit-to-width, so
 // on a phone 1 unit ≈ 0.5px — a 12-unit handle is ~6px, far too small to grab.
@@ -171,6 +194,7 @@ const ghost = computed(() => props.rooms.length === 0)
       :selected-fixture-id="selectedFixtureId"
       :selected-opening-id="selectedOpeningId"
       :dim-detail="dimDetail"
+      :covered-by="coveredByRoom[room.id]"
     />
 
     <!-- Draw preview -->

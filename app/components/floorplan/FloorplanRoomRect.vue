@@ -2,6 +2,7 @@
 import type { Geometry, Room } from '~/models'
 import type { DimDetail } from '~/composables/useFloorplan'
 import { buildRoomPath, dimsLabel, openingHitRect, openingMeasures, outlineMeasures, sqFt } from '~/utils/geometry'
+import type { Rect } from '~/utils/geometry'
 import { openingPrims, wallPrims } from '~/utils/floorplan-draw'
 import { FIXTURE_SELECTED, LABEL_COLOR, RING_ARC, RING_DONE, RING_TRACK, STATUS_STYLES } from '~/utils/floorplan-style'
 import type { Progress } from '~/utils/rollup'
@@ -22,7 +23,16 @@ const props = defineProps<{
   selectedFixtureId?: string | null
   selectedOpeningId?: string | null
   dimDetail?: DimDetail
+  // Footprints of rooms painted on top of this one — dimension labels inside any
+  // of these are hidden so they don't collide under a covering room.
+  coveredBy?: Rect[]
 }>()
+
+// A label point is hidden if it falls inside any covering room's footprint.
+function uncovered(p: { x: number, y: number }): boolean {
+  const cov = props.coveredBy
+  return !cov?.some(r => p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h)
+}
 
 // Dimension annotations (room size, opening positions, fixture sizes) are hidden
 // at 'low'; 'all' also dimensions every opening + fixture.
@@ -47,15 +57,19 @@ const openings = computed(() =>
 // otherwise just the selected one (shown live while dragging for placement).
 const openingMeasureLabels = computed(() => {
   const ops = props.geometry.openings ?? []
-  if (props.dimDetail === 'all') return ops.flatMap(o => openingMeasures(props.geometry, o))
-  const sel = ops.find(o => o.id === props.selectedOpeningId)
-  return sel ? openingMeasures(props.geometry, sel) : []
+  const labels = props.dimDetail === 'all'
+    ? ops.flatMap(o => openingMeasures(props.geometry, o))
+    : ops.filter(o => o.id === props.selectedOpeningId).flatMap(o => openingMeasures(props.geometry, o))
+  return labels.filter(uncovered)
 })
 
 // At 'all' detail: dimension EVERY segment of the actual outline — each wall run,
-// each notch jog, each place a neighbour cuts in.
+// each notch jog, each place a neighbour cuts in. Labels under a covering room
+// are dropped (the covering room dimensions that region itself).
 const outlineLabels = computed(() =>
-  props.dimDetail === 'all' && !covered.value ? outlineMeasures(props.geometry) : [],
+  props.dimDetail === 'all' && !covered.value
+    ? outlineMeasures(props.geometry).filter(uncovered)
+    : [],
 )
 
 // UX6: an over-budget room is the isolated, visually distinct item on the plan.
