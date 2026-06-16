@@ -656,6 +656,34 @@ export function openingMeasures(geo: Geometry, op: Opening): { x: number, y: num
   return out
 }
 
+// Every segment of the room's actual outline, dimensioned. Walks the effective
+// rectilinear polygon (footprint minus notches + overlap cuts) and emits a length
+// label just outside each edge — so every wall run, every notch jog, and every
+// place a neighbouring room cuts in gets its own measurement. The outer ring winds
+// clockwise in screen space (y-down), so the outward normal of a directed edge is
+// (dy, -dx).
+export function outlineMeasures(geo: Geometry): { x: number, y: number, text: string }[] {
+  const out: { x: number, y: number, text: string }[] = []
+  const offset = 11
+  for (const ring of rectilinearRings(geo)) {
+    const n = ring.length
+    for (let i = 0; i < n; i++) {
+      const a = ring[i]!
+      const b = ring[(i + 1) % n]!
+      const dx = b.x - a.x
+      const dy = b.y - a.y
+      const len = Math.abs(dx) + Math.abs(dy) // axis-aligned: one of dx/dy is 0
+      if (len < 4) continue // skip slivers
+      out.push({
+        x: (a.x + b.x) / 2 + (dy / len) * offset,
+        y: (a.y + b.y) / 2 + (-dx / len) * offset,
+        text: lengthLabel(Math.round(len)),
+      })
+    }
+  }
+  return out
+}
+
 // Clearances from a fixture to its room walls — the gap to the nearest wall on
 // each axis, positioned in that gap. Helps place fixtures precisely.
 export function fixtureClearances(geo: Geometry, f: Fixture): { x: number, y: number, text: string }[] {

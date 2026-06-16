@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Geometry, Room } from '~/models'
 import type { DimDetail } from '~/composables/useFloorplan'
-import { buildRoomPath, dimsLabel, openingHitRect, openingMeasures, sqFt } from '~/utils/geometry'
+import { buildRoomPath, dimsLabel, openingHitRect, openingMeasures, outlineMeasures, sqFt } from '~/utils/geometry'
 import { openingPrims, wallPrims } from '~/utils/floorplan-draw'
 import { FIXTURE_SELECTED, LABEL_COLOR, RING_ARC, RING_DONE, RING_TRACK, STATUS_STYLES } from '~/utils/floorplan-style'
 import type { Progress } from '~/utils/rollup'
@@ -51,6 +51,12 @@ const openingMeasureLabels = computed(() => {
   const sel = ops.find(o => o.id === props.selectedOpeningId)
   return sel ? openingMeasures(props.geometry, sel) : []
 })
+
+// At 'all' detail: dimension EVERY segment of the actual outline — each wall run,
+// each notch jog, each place a neighbour cuts in.
+const outlineLabels = computed(() =>
+  props.dimDetail === 'all' && !covered.value ? outlineMeasures(props.geometry) : [],
+)
 
 // UX6: an over-budget room is the isolated, visually distinct item on the plan.
 // Amber warning triangle at the top-left (the ring owns the top-right), with a
@@ -146,6 +152,19 @@ watch(
       :y="m.y"
       text-anchor="middle"
       font-size="11"
+      font-weight="600"
+      :fill="LABEL_COLOR"
+    >{{ m.text }}</text>
+    <!-- every outline segment dimensioned (all detail) -->
+    <text
+      v-for="(m, i) in outlineLabels"
+      :key="`ol${i}`"
+      class="fp-room__measure"
+      :x="m.x"
+      :y="m.y"
+      text-anchor="middle"
+      dominant-baseline="middle"
+      font-size="10"
       font-weight="600"
       :fill="LABEL_COLOR"
     >{{ m.text }}</text>

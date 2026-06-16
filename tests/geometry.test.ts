@@ -21,6 +21,7 @@ import {
   openingHitTest,
   openingMeasures,
   openingOffsetAt,
+  outlineMeasures,
   rectFromCorners,
   rectilinearRings,
   rotate90,
@@ -358,6 +359,22 @@ describe('fixtureClearances', () => {
   it('omits an axis when the fixture is flush to a wall', () => {
     const flush: Fixture = { ...fixture, x: 0, y: 0 } // touches left + top walls
     expect(fixtureClearances(room, flush)).toHaveLength(0)
+  })
+})
+
+describe('outlineMeasures', () => {
+  it('dimensions all four sides of a plain rectangle, just outside each edge', () => {
+    const m = outlineMeasures(gw({ x: 0, y: 0, w: 120, h: 96 }))
+    expect(m).toHaveLength(4)
+    expect(m).toContainEqual({ x: 60, y: -11, text: lengthLabel(120) }) // top edge, above
+    expect(m).toContainEqual({ x: 131, y: 48, text: lengthLabel(96) }) // right edge, outside
+  })
+
+  it('dimensions the extra segments a notch introduces', () => {
+    const notched = gw({ x: 0, y: 0, w: 120, h: 96, notches: [{ id: 'n', x: 0, y: 0, w: 24, h: 24 }] })
+    const m = outlineMeasures(notched)
+    expect(m.length).toBeGreaterThan(4) // L-shape: more edges than a plain rect
+    expect(m.some(l => l.text === lengthLabel(24))).toBe(true) // a notch jog is dimensioned
   })
 })
 
