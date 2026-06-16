@@ -91,6 +91,14 @@ service cloud.firestore {
         && isEnum(d.status, ['idea','to-buy','purchased'])
         && d.rank is int && d.rank >= 0 && d.rank <= 5;
     }
+    // Unified Shopping & Selections item. Lenient: only the always-present
+    // fields are required (label + a valid lifecycle status); everything else —
+    // category, rank, lead time, budget link — is optional per phase.
+    function validItem() {
+      let d = request.resource.data;
+      return d.label is string
+        && isEnum(d.status, ['idea','to-buy','purchased','delivered','installed']);
+    }
 
     // ---- invite tokens (top-level) ----
     // Any signed-in user can read an invite to accept it.
@@ -127,6 +135,10 @@ service cloud.firestore {
         && (resource.data.uid == request.auth.uid || isMember(resource.data.uid, resource.data.projectId));
     }
     match /{path=**}/purchases/{purchaseId} {
+      allow read: if request.auth != null
+        && (resource.data.uid == request.auth.uid || isMember(resource.data.uid, resource.data.projectId));
+    }
+    match /{path=**}/items/{itemId} {
       allow read: if request.auth != null
         && (resource.data.uid == request.auth.uid || isMember(resource.data.uid, resource.data.projectId));
     }
@@ -205,6 +217,13 @@ service cloud.firestore {
           match /purchases/{purchaseId} {
             allow read: if isOwner(uid) || isMember(uid, projectId);
             allow create, update: if (isOwner(uid) || isMember(uid, projectId)) && ownsPayload(uid) && validPurchase();
+            allow delete: if isOwner(uid) || isMember(uid, projectId);
+          }
+          // Unified Shopping & Selections collection (merged from selections +
+          // purchases). The legacy blocks above stay one release for rollback.
+          match /items/{itemId} {
+            allow read: if isOwner(uid) || isMember(uid, projectId);
+            allow create, update: if (isOwner(uid) || isMember(uid, projectId)) && ownsPayload(uid) && validItem();
             allow delete: if isOwner(uid) || isMember(uid, projectId);
           }
         }

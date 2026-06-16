@@ -2,18 +2,18 @@
 import type { Task, TaskPhase } from '~/models'
 import { TASK_PHASE_OPTIONS } from '~/config/tasks'
 import { useProjectTasks, useTaskOps } from '~/composables/useTasks'
-import { useProjectSelections } from '~/composables/useSelections'
+import { useProjectItems } from '~/composables/useItems'
 
 // Edit a task's label, phase, due date, predecessors (dependsOn) and blocking
-// selections. Candidates are scoped to the task's own room. This is where the
+// items. Candidates are scoped to the task's own room. This is where the
 // template-seeded dependencies become editable (Phase 7) and where a task is
-// wired to the long-lead selections that gate it (Phase 8).
+// wired to the long-lead items that gate it (Phase 8).
 const props = defineProps<{ modelValue: boolean, task: Task }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
 
 const ops = useTaskOps()
 const tasksApi = useProjectTasks()
-const sel = useProjectSelections()
+const items = useProjectItems()
 
 const open = computed({
   get: () => props.modelValue,
@@ -41,7 +41,7 @@ const depItems = computed(() =>
     .map(t => ({ value: t.id, title: t.label })),
 )
 const selItems = computed(() =>
-  sel.byRoom(props.task.roomId).map(s => ({ value: s.id, title: `${s.label} · ${s.status}` })),
+  items.byRoom(props.task.roomId).map(i => ({ value: i.id, title: `${i.label} · ${i.status}` })),
 )
 
 const valid = computed(() => !!label.value.trim())
@@ -83,12 +83,12 @@ function save() {
         <v-select
           v-model="blockedBySelections"
           :items="selItems"
-          label="Blocked by selections (until delivered)"
+          label="Blocked by items (until delivered)"
           multiple
           chips
           closable-chips
           density="comfortable"
-          no-data-text="No selections in this room yet"
+          no-data-text="No items in this room yet"
         />
       </v-card-text>
       <v-card-actions>

@@ -43,17 +43,17 @@ export function seededBundle(): ProjectBundle {
       { ...base, id: 'task-1', roomId: 'room-kitchen', label: 'Demo old cabinets', phase: 'demo', status: 'done', dependsOn: [], blockedBySelections: [] },
       { ...base, id: 'task-2', roomId: 'room-kitchen', label: 'Hang cabinets', phase: 'fixtures', status: 'blocked', dependsOn: ['task-1'], blockedBySelections: ['sel-1'], dueDate: '2026-07-15' },
     ],
-    selections: [
-      { ...base, id: 'sel-1', roomId: 'room-kitchen', label: 'Shaker cabinets', category: 'cabinets', vendor: 'KraftMaid', sku: 'KM-SH-42', priceCents: 1_255_000, leadTimeDays: 42, status: 'ordered', orderedAt: TS(1_701_000_000), expectedAt: '2026-08-01', budgetLineId: 'bl-1' },
+    // Unified Shopping & Selections items: a long-lead selection (purchased,
+    // with a derived ETA — task-2 is blocked on it) + a shopping candidate.
+    items: [
+      { ...base, id: 'sel-1', roomId: 'room-kitchen', label: 'Shaker cabinets', category: 'cabinets', vendor: 'KraftMaid', sku: 'KM-SH-42', priceCents: 1_255_000, leadTimeDays: 42, status: 'purchased', orderedAt: TS(1_701_000_000), expectedAt: '2026-08-01', budgetLineId: 'bl-1' },
+      { ...base, id: 'buy-1', roomId: 'room-kitchen', label: 'Brushed gold pull-down faucet', category: 'Faucets', status: 'to-buy', rank: 4, vendor: 'Delta', url: 'https://example.com/faucet', imageUrl: 'https://example.com/faucet.jpg', priceCents: 28_900, notes: 'Matches cabinet hardware' },
     ],
     photos: [
       { ...base, id: 'photo-1', roomId: 'room-kitchen', storagePath: 'users/owner-1/projects/proj-1/rooms/room-kitchen/photos/photo-1/original', thumbPath: 'users/owner-1/projects/proj-1/rooms/room-kitchen/photos/photo-1/thumb', stage: 'before', caption: 'Before demo', takenAt: TS(1_700_500_000) },
     ],
     paints: [
       { ...base, id: 'paint-1', roomId: 'room-kitchen', name: 'Sea Salt', brand: 'Sherwin-Williams', code: 'SW 6204', finish: 'satin', surface: 'walls', hex: '#cbd2c4', notes: 'North-facing test patch approved' },
-    ],
-    purchases: [
-      { ...base, id: 'buy-1', roomId: 'room-kitchen', title: 'Brushed gold pull-down faucet', group: 'Faucets', status: 'to-buy', rank: 4, vendor: 'Delta', url: 'https://example.com/faucet', imageUrl: 'https://example.com/faucet.jpg', priceCents: 28_900, notes: 'Matches cabinet hardware' },
     ],
     permits: [
       {

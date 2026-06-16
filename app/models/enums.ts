@@ -49,14 +49,25 @@ export type BudgetCategory = z.infer<typeof BudgetCategory>
 export const TaskStatus = z.enum(['todo', 'in-progress', 'blocked', 'done'])
 export type TaskStatus = z.infer<typeof TaskStatus>
 
-export const SelectionStatus = z.enum([
-  'considering',
-  'decided',
-  'ordered',
+// Unified Shopping & Selections lifecycle (one continuous flow): an item starts
+// as a loose idea, becomes something to buy, is purchased (order placed / bought
+// — stamps the order date and starts the lead-time clock), then arrives and is
+// installed. Replaces the former split PurchaseStatus + SelectionStatus.
+export const ItemStatus = z.enum([
+  'idea',
+  'to-buy',
+  'purchased',
   'delivered',
   'installed',
 ])
-export type SelectionStatus = z.infer<typeof SelectionStatus>
+export type ItemStatus = z.infer<typeof ItemStatus>
+
+// Declaration order is the lifecycle order; the section sorts by it.
+export const ITEM_STATUS_ORDER: readonly ItemStatus[] = ItemStatus.options
+
+// An item stops blocking dependent tasks (and stops being "overdue") once it has
+// physically arrived. Shared by selection-math + task-graph.
+export const ARRIVED_STATUSES: readonly ItemStatus[] = ['delivered', 'installed']
 
 export const PermitStatus = z.enum(['needed', 'applied', 'issued', 'closed'])
 export type PermitStatus = z.infer<typeof PermitStatus>
@@ -95,6 +106,3 @@ export const PaintSurface = z.enum([
 ])
 export type PaintSurface = z.infer<typeof PaintSurface>
 
-// A purchase item moves from a loose idea → a committed buy → bought.
-export const PurchaseStatus = z.enum(['idea', 'to-buy', 'purchased'])
-export type PurchaseStatus = z.infer<typeof PurchaseStatus>

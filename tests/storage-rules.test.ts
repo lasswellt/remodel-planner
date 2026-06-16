@@ -10,13 +10,13 @@ import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest'
 
 // Security-rules suite for storage.rules (run against the Storage emulator via
 // `pnpm test:rules`). Locks in that project collaborators — not only the owning
-// user — can upload room photos and purchase images/receipts, while uploads stay
+// user — can upload room photos and item images/receipts, while uploads stay
 // constrained to images / PDFs under 10MB.
 
 const OWNER = 'owner-uid'
 const MEMBER = 'member-uid'
 const photoPath = `users/${OWNER}/projects/p1/rooms/r1/photos/ph1/original`
-const receiptPath = `users/${OWNER}/projects/p1/rooms/r1/purchases/pu1/receipt`
+const receiptPath = `users/${OWNER}/projects/p1/rooms/r1/items/i1/receipt`
 const bytes = new Uint8Array([1, 2, 3, 4]) // tiny payload; rules don't inspect content
 
 let testEnv: RulesTestEnvironment

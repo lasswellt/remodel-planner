@@ -38,10 +38,10 @@ const db = useFirestore()
 const projectStore = useProjectStore()
 const roomsStore = useRoomsStore()
 const rollup = useRollup()
-const selections = useProjectSelections()
+const items = useProjectItems()
 
-const overdueSelections = computed(() =>
-  selections.byRoom(props.room.id).filter(s => selections.isSelectionOverdue(s)),
+const overdueItems = computed(() =>
+  items.byRoom(props.room.id).filter(i => items.isItemOverdue(i)),
 )
 
 const progress = computed(() => rollup.byRoom(props.room.id))
@@ -734,17 +734,17 @@ const statusItems: { value: RoomStatus, title: string }[] = [
         </p>
       </div>
 
-      <!-- UX6: overdue selections are the salient warning on the panel. -->
+      <!-- UX6: overdue items are the salient warning on the panel. -->
       <v-alert
-        v-if="overdueSelections.length > 0"
+        v-if="overdueItems.length > 0"
         type="warning"
         variant="tonal"
         density="compact"
         class="mb-2"
         icon="mdi-truck-alert-outline"
       >
-        {{ overdueSelections.length }} overdue selection{{ overdueSelections.length === 1 ? '' : 's' }}:
-        {{ overdueSelections.map(s => s.label).join(', ') }}
+        {{ overdueItems.length }} overdue item{{ overdueItems.length === 1 ? '' : 's' }}:
+        {{ overdueItems.map(i => i.label).join(', ') }}
       </v-alert>
 
       <v-expansion-panels variant="accordion" class="mt-4" multiple>

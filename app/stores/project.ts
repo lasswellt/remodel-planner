@@ -3,6 +3,7 @@ import { deleteDoc, doc, getDoc, setDoc, Timestamp, updateDoc } from 'firebase/f
 import { useCollection, useCurrentUser, useDocument, useFirestore } from 'vuefire'
 import { Invite, type Member, type Project, type SharedProjectRef } from '~/models'
 import { deleteProjectDeep } from '~/utils/firestore-cascade'
+import { migrateProjectToItems } from '~/utils/items-migration'
 import {
   inviteDoc,
   memberDoc,
@@ -55,6 +56,25 @@ export const useProjectStore = defineStore('project', () => {
   const isSharedProject = computed(() =>
     !!(user.value && currentProjectOwnerId.value && currentProjectOwnerId.value !== user.value.uid),
   )
+
+  // One-time selections+purchases → items migration. Runs for the OWNER of the
+  // active project (members can't write the project doc) once, when the project
+  // doc loads without an itemsMigratedAt marker. Guarded in-memory so it doesn't
+  // re-fire while the marker write propagates back through the listener.
+  const migrationAttempted = new Set<string>()
+  watch(currentProject, (project) => {
+    const p = project as Project | undefined | null
+    if (!p?.id || isSharedProject.value) return
+    const owner = user.value?.uid
+    if (!owner || p.uid !== owner || p.itemsMigratedAt) return
+    if (migrationAttempted.has(p.id)) return
+    migrationAttempted.add(p.id)
+    migrateProjectToItems(db, owner, p.id).catch((err) => {
+      // Offline or transient: clear the guard so a later load retries.
+      migrationAttempted.delete(p.id)
+      console.error('items migration failed; will retry on next load', err)
+    })
+  })
 
   // Merged list for the project picker: own projects first, then shared
   const allProjects = computed(() => {

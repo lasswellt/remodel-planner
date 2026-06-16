@@ -199,22 +199,18 @@ function addItem() {
         </v-card-text>
       </v-card>
 
-      <!-- Selections (Phase 8): long-lead items that gate this room's tasks -->
+      <!-- Shopping & selections: one list from idea → to-buy → purchased →
+           delivered → installed. Grouped + star-ranked; long-lead items that
+           gate this room's tasks track their order date + ETA here too. -->
       <section class="mt-8">
-        <h2 class="text-h6 mb-2">Selections</h2>
-        <SelectionsSection :room="room" />
+        <h2 class="text-h6 mb-2">Shopping &amp; selections</h2>
+        <ItemsSection :room="room" />
       </section>
 
       <!-- Paint colors: brand, code, finish, surface + swatch per surface -->
       <section class="mt-8">
         <h2 class="text-h6 mb-2">Paint colors</h2>
         <PaintsSection :room="room" />
-      </section>
-
-      <!-- Shopping: things (or ideas) to buy, grouped + star-ranked -->
-      <section class="mt-8">
-        <h2 class="text-h6 mb-2">Shopping</h2>
-        <PurchasesSection :room="room" />
       </section>
 
       <!-- Photos (Phase 10): owner-only, since Storage is owner-scoped -->

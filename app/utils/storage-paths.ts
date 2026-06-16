@@ -14,12 +14,12 @@ export function photoThumbPath(uid: string, projectId: string, roomId: string, p
   return `${photoDir(uid, projectId, roomId, photoId)}/thumb`
 }
 
-// One uploaded photo per purchase item (a single object, overwritten on replace).
-export function purchaseImagePath(uid: string, projectId: string, roomId: string, purchaseId: string): string {
-  return `users/${uid}/projects/${projectId}/rooms/${roomId}/purchases/${purchaseId}/image`
+// One uploaded photo per item (a single object, overwritten on replace).
+export function itemImagePath(uid: string, projectId: string, roomId: string, itemId: string): string {
+  return `users/${uid}/projects/${projectId}/rooms/${roomId}/items/${itemId}/image`
 }
 
-// One receipt per purchase item (image or PDF; overwritten on replace).
-export function purchaseReceiptPath(uid: string, projectId: string, roomId: string, purchaseId: string): string {
-  return `users/${uid}/projects/${projectId}/rooms/${roomId}/purchases/${purchaseId}/receipt`
+// One receipt per item (image or PDF; overwritten on replace).
+export function itemReceiptPath(uid: string, projectId: string, roomId: string, itemId: string): string {
+  return `users/${uid}/projects/${projectId}/rooms/${roomId}/items/${itemId}/receipt`
 }

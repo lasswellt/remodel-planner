@@ -3,16 +3,14 @@ import type { InspirationItem } from '~/models'
 import { ROOM_TYPE_ICONS, ROOM_TYPE_LABELS } from '~/config/rooms'
 import { useRoomsStore } from '~/stores/rooms'
 import { useProjectInspiration } from '~/composables/useInspiration'
-import { useProjectPurchases } from '~/composables/usePurchases'
 
-// "By room" inspiration view: per actual room, surfaces the shopping list
-// (purchases/ideas captured in the per-room view) alongside any inspiration
-// pinned to that room — so the two work together in one place.
+// "By room" inspiration view: per actual room, surfaces the shopping &
+// selections list (items captured in the per-room view) alongside any
+// inspiration pinned to that room — so the two work together in one place.
+// ItemsSection reads the single shared project-wide items listener, so every
+// room section below shares one listener.
 const roomsStore = useRoomsStore()
 const insp = useProjectInspiration()
-// One shared project-wide purchases listener feeds every room section below,
-// instead of each PurchasesSection opening its own per-room listener.
-const purch = useProjectPurchases()
 
 const rooms = computed(() =>
   [...roomsStore.rooms].sort((a, b) => a.floor - b.floor || a.name.localeCompare(b.name)),
@@ -61,9 +59,9 @@ function openEdit(i: InspirationItem) {
           </v-col>
         </v-row>
 
-        <!-- The room's shopping list (purchases / ideas) — fed from the shared
-             project-wide listener so this view opens one listener, not N. -->
-        <PurchasesSection :room="room" :items="purch.byRoom(room.id)" />
+        <!-- The room's shopping & selections list — reads the shared
+             project-wide items listener, so this view opens one listener, not N. -->
+        <ItemsSection :room="room" />
 
         <v-divider class="mt-6" />
       </section>

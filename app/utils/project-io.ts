@@ -4,29 +4,28 @@ import {
   BudgetLine,
   ChecklistItem,
   InspirationItem,
+  Item,
   Paint,
   Permit,
   Photo,
   Project,
-  PurchaseItem,
   Room,
   SCHEMA_VERSION,
-  Selection,
   Task,
 } from '~/models'
 
 // Full project tree, flattened by collection — the unit of export/import and
-// the shape stores hydrate into.
+// the shape stores hydrate into. `items` is the unified Shopping & Selections
+// collection (merged from the former selections[] + purchases[] at schema v2).
 export interface ProjectBundle {
   project: Project
   rooms: Room[]
   checklist: ChecklistItem[]
   budgetLines: BudgetLine[]
   tasks: Task[]
-  selections: Selection[]
+  items: Item[]
   photos: Photo[]
   paints: Paint[]
-  purchases: PurchaseItem[]
   permits: Permit[]
   inspiration: InspirationItem[]
 }
@@ -75,10 +74,49 @@ export function exportProject(bundle: ProjectBundle, exportedAt: string): Projec
   }
 }
 
-// Forward-migrate an older export to the current schema. Identity at v1; future
-// versions add cases here. Newer-than-current exports are refused by importProject.
+// v1 statuses fold onto the unified item lifecycle. Operates on plain JSON
+// (pre-Timestamp-rehydration), so it only reshapes fields — BundleSchema does
+// the real validation afterward.
+function mapPurchaseStatus(s: unknown): string {
+  return s === 'to-buy' || s === 'purchased' ? s : 'idea'
+}
+const SELECTION_STATUS_MAP: Record<string, string> = {
+  considering: 'idea',
+  decided: 'to-buy',
+  ordered: 'purchased',
+  delivered: 'delivered',
+  installed: 'installed',
+}
+function mapSelectionStatus(s: unknown): string {
+  return (typeof s === 'string' && SELECTION_STATUS_MAP[s]) || 'idea'
+}
+function migratePurchaseDoc(p: Record<string, unknown>): Record<string, unknown> {
+  const { title, group, status, ...rest } = p
+  return {
+    ...rest,
+    label: title,
+    ...(group != null ? { category: group } : {}),
+    status: mapPurchaseStatus(status),
+  }
+}
+function migrateSelectionDoc(s: Record<string, unknown>): Record<string, unknown> {
+  return { ...s, status: mapSelectionStatus(s.status) }
+}
+
+// Forward-migrate an older export to the current schema. Newer-than-current
+// exports are refused by importProject.
+//   v1 → v2: fold selections[] + purchases[] into one items[].
 function migrate(data: ProjectExport): ProjectExport {
-  return data
+  if (data.schemaVersion >= 2) return data
+  const b = (data.bundle ?? {}) as Record<string, unknown>
+  const selections = Array.isArray(b.selections) ? (b.selections as Record<string, unknown>[]) : []
+  const purchases = Array.isArray(b.purchases) ? (b.purchases as Record<string, unknown>[]) : []
+  // Dedup by id (selection + purchase ids could astronomically-rarely collide):
+  // one items[] entry per id, else the import would write the same path twice.
+  const merged = [...selections.map(migrateSelectionDoc), ...purchases.map(migratePurchaseDoc)]
+  const items = [...new Map(merged.map(i => [i.id as string, i])).values()]
+  const { selections: _s, purchases: _p, ...restBundle } = b
+  return { ...data, schemaVersion: 2, bundle: { ...restBundle, items } }
 }
 
 const BundleSchema = z.object({
@@ -87,10 +125,9 @@ const BundleSchema = z.object({
   checklist: z.array(ChecklistItem),
   budgetLines: z.array(BudgetLine),
   tasks: z.array(Task),
-  selections: z.array(Selection),
+  items: z.array(Item),
   photos: z.array(Photo),
   paints: z.array(Paint),
-  purchases: z.array(PurchaseItem),
   permits: z.array(Permit),
   inspiration: z.array(InspirationItem),
 })

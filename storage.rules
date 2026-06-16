@@ -4,13 +4,13 @@ rules_version = '2';
 //
 // Writes (and the read needed for getDownloadURL after upload) are allowed for
 // ANY signed-in user, not just the owning {uid} — so project collaborators
-// (members), not only the owner, can upload room photos and purchase
+// (members), not only the owner, can upload room photos and item
 // images/receipts. Firebase Storage rules can't read Firestore and this app has
 // no Cloud Functions / Admin SDK to mint membership custom claims, so per-project
 // membership can't be checked here. The real gate is the FIRESTORE document that
 // references each object: those writes require project membership, and a stored
 // object is useless without one (it's only ever surfaced via a member-written
-// photo/purchase doc). Writes are still constrained to images or PDFs under 10MB.
+// photo/item doc). Writes are still constrained to images or PDFs under 10MB.
 service firebase.storage {
   match /b/{bucket}/o {
     match /users/{uid}/{allPaths=**} {

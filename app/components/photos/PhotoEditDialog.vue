@@ -2,7 +2,7 @@
 import type { Photo, PhotoStage } from '~/models'
 import { PHOTO_STAGES, PHOTO_STAGE_LABELS } from '~/config/photos'
 import { useProjectTasks } from '~/composables/useTasks'
-import { useProjectSelections } from '~/composables/useSelections'
+import { useProjectItems } from '~/composables/useItems'
 import { usePhotoOps } from '~/composables/usePhotos'
 
 const props = defineProps<{ modelValue: boolean, photo: Photo }>()
@@ -10,7 +10,7 @@ const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
 
 const ops = usePhotoOps()
 const tasksApi = useProjectTasks()
-const sel = useProjectSelections()
+const items = useProjectItems()
 
 const open = computed({
   get: () => props.modelValue,
@@ -36,8 +36,8 @@ const taskItems = computed(() => [
   ...tasksApi.tasks.value.filter(t => t.roomId === props.photo.roomId).map(t => ({ value: t.id, title: t.label })),
 ])
 const selectionItems = computed(() => [
-  { value: '', title: 'No selection' },
-  ...sel.byRoom(props.photo.roomId).map(s => ({ value: s.id, title: s.label })),
+  { value: '', title: 'No item' },
+  ...items.byRoom(props.photo.roomId).map(i => ({ value: i.id, title: i.label })),
 ])
 
 function save() {
@@ -67,7 +67,7 @@ function save() {
         <v-select v-model="stage" :items="stageItems" label="Stage" density="comfortable" class="mb-2" />
         <v-text-field v-model="caption" label="Caption (optional)" density="comfortable" class="mb-2" />
         <v-select v-model="taskId" :items="taskItems" label="Link to task (optional)" density="comfortable" class="mb-2" />
-        <v-select v-model="selectionId" :items="selectionItems" label="Link to selection (optional)" density="comfortable" />
+        <v-select v-model="selectionId" :items="selectionItems" label="Link to item (optional)" density="comfortable" />
       </v-card-text>
       <v-card-actions>
         <v-spacer />

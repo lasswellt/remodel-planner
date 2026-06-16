@@ -166,6 +166,45 @@ describe('purchases collection-group read', () => {
   })
 })
 
+describe('items (merged Shopping & Selections)', () => {
+  const itemPath = (id = 'i1') => `users/${OWNER}/projects/${PROJECT}/rooms/room1/items/${id}`
+  const validItem = { uid: OWNER, projectId: PROJECT, roomId: 'room1', label: 'Vanity', status: 'purchased' }
+
+  it('owner/member can write a valid item; a bad status is rejected', async () => {
+    await seedProject()
+    await seed(async ctx => setDoc(doc(ctx.firestore(), memberPath(MEMBER)), member(MEMBER, 'tok')))
+    await assertSucceeds(setDoc(doc(db(OWNER), itemPath()), validItem))
+    await assertSucceeds(setDoc(doc(db(MEMBER), itemPath('i2')), validItem))
+    await assertFails(setDoc(doc(db(OWNER), itemPath('i3')), { ...validItem, status: 'ordered' }))
+    await assertFails(setDoc(doc(db(OWNER), itemPath('i4')), { uid: OWNER, projectId: PROJECT, roomId: 'room1', status: 'idea' }))
+  })
+
+  it('owner and member can group-read items; a stranger cannot', async () => {
+    await seedProject()
+    await seed(async (ctx) => {
+      const d = ctx.firestore()
+      await setDoc(doc(d, itemPath()), validItem)
+      await setDoc(doc(d, memberPath(MEMBER)), member(MEMBER, 'tok'))
+    })
+    const groupQuery = (uid: string) =>
+      query(collectionGroup(db(uid), 'items'), where('uid', '==', OWNER), where('projectId', '==', PROJECT))
+    await assertSucceeds(getDocs(groupQuery(OWNER)))
+    await assertSucceeds(getDocs(groupQuery(MEMBER)))
+    await assertFails(getDocs(groupQuery(STRANGER)))
+  })
+
+  // Partial updateDoc() payloads must pass validItem(): request.resource.data on
+  // an update is the FULL post-write doc (label/status carry over from the
+  // existing doc), so the always-required fields are still present.
+  it('allows partial updates (rank / status / image / receipt-clear) on an item', async () => {
+    await seedProject()
+    await seed(async ctx => setDoc(doc(ctx.firestore(), itemPath()), validItem))
+    await assertSucceeds(updateDoc(doc(db(OWNER), itemPath()), { rank: 3 }))
+    await assertSucceeds(updateDoc(doc(db(OWNER), itemPath()), { status: 'to-buy' }))
+    await assertSucceeds(updateDoc(doc(db(OWNER), itemPath()), { imageUrl: 'https://example.com/x.jpg', imagePath: `users/${OWNER}/projects/${PROJECT}/rooms/room1/items/i1/image` }))
+  })
+})
+
 describe('invite tokens', () => {
   it('owner can create an invite for their own project; others cannot impersonate the owner', async () => {
     await assertSucceeds(setDoc(doc(db(OWNER), 'invites/t1'), {

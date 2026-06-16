@@ -1,20 +1,21 @@
 <script setup lang="ts">
-import type { PurchaseItem, PurchaseStatus } from '~/models'
-import { PURCHASE_STATUS_COLORS, PURCHASE_STATUS_LABELS, PURCHASE_STATUS_OPTIONS } from '~/config/purchases'
+import type { Item, ItemStatus } from '~/models'
+import { ITEM_STATUS_COLORS, ITEM_STATUS_LABELS, ITEM_STATUS_OPTIONS } from '~/config/items'
 import { formatMoney } from '~/utils/money'
-import { usePurchaseOps } from '~/composables/usePurchases'
+import { useItemOps } from '~/composables/useItems'
 
-const props = defineProps<{ item: PurchaseItem }>()
-const emit = defineEmits<{ edit: [] }>()
+const props = defineProps<{ item: Item, overdue?: boolean }>()
+const emit = defineEmits<{ edit: [], advance: [ItemStatus] }>()
 
-const ops = usePurchaseOps()
+const ops = useItemOps()
+
+// Receipt becomes relevant once an item is acquired (purchased onward).
+const ACQUIRED: ItemStatus[] = ['purchased', 'delivered', 'installed']
+const showReceipt = computed(() => !!props.item.receiptUrl || ACQUIRED.includes(props.item.status))
 
 function onRank(value: number | string | null) {
   const n = Number(value)
   ops.setRank(props.item, Number.isFinite(n) ? n : 0)
-}
-function onStatus(status: PurchaseStatus) {
-  ops.setStatus(props.item, status)
 }
 
 // Upload (or replace) a photo of the item from the camera / photo library.
@@ -59,10 +60,10 @@ async function onReceipt(e: Event) {
 </script>
 
 <template>
-  <v-card variant="outlined" class="h-100 d-flex flex-column">
+  <v-card variant="outlined" class="h-100 d-flex flex-column" :class="{ 'item-card--overdue': overdue }">
     <!-- Item photo: shown only when set, with replace / remove controls. -->
     <div v-if="item.imageUrl" class="pur-photo">
-      <v-img :src="item.imageUrl" :alt="item.title" :aspect-ratio="4 / 3" cover>
+      <v-img :src="item.imageUrl" :alt="item.label" :aspect-ratio="4 / 3" cover>
         <template #error>
           <div class="img-fallback"><v-icon icon="mdi-image-off-outline" /></div>
         </template>
@@ -88,7 +89,7 @@ async function onReceipt(e: Event) {
     </div>
 
     <div class="pa-3 d-flex flex-column flex-grow-1">
-      <!-- No photo yet → a compact upload affordance (was a full-size empty box). -->
+      <!-- No photo yet → a compact upload affordance. -->
       <button
         v-if="!item.imageUrl"
         type="button"
@@ -111,23 +112,23 @@ async function onReceipt(e: Event) {
           rel="noopener"
           class="text-body-2 font-weight-medium text-primary text-decoration-none flex-grow-1 min-width-0 text-truncate"
         >
-          {{ item.title }} <v-icon icon="mdi-open-in-new" size="x-small" />
+          {{ item.label }} <v-icon icon="mdi-open-in-new" size="x-small" />
         </a>
-        <span v-else class="text-body-2 font-weight-medium flex-grow-1 min-width-0 text-truncate">{{ item.title }}</span>
+        <span v-else class="text-body-2 font-weight-medium flex-grow-1 min-width-0 text-truncate">{{ item.label }}</span>
         <v-menu>
           <template #activator="{ props: menu }">
-            <v-chip :color="PURCHASE_STATUS_COLORS[item.status]" size="x-small" variant="flat" v-bind="menu">
-              {{ PURCHASE_STATUS_LABELS[item.status] }}
+            <v-chip :color="ITEM_STATUS_COLORS[item.status]" size="x-small" variant="flat" v-bind="menu">
+              {{ ITEM_STATUS_LABELS[item.status] }}
             </v-chip>
           </template>
           <v-list density="compact">
             <v-list-subheader>Set status</v-list-subheader>
             <v-list-item
-              v-for="st in PURCHASE_STATUS_OPTIONS"
+              v-for="st in ITEM_STATUS_OPTIONS"
               :key="st.value"
               :title="st.title"
               :disabled="st.value === item.status"
-              @click="onStatus(st.value)"
+              @click="emit('advance', st.value)"
             />
           </v-list>
         </v-menu>
@@ -136,10 +137,22 @@ async function onReceipt(e: Event) {
         <span v-if="item.vendor">{{ item.vendor }}</span>
         <span v-if="item.priceCents != null" class="font-weight-medium text-high-emphasis">{{ formatMoney(item.priceCents) }}</span>
       </div>
+
+      <!-- Procurement: lead time + derived ETA, with an overdue warning. -->
+      <div
+        v-if="item.leadTimeDays != null || item.expectedAt"
+        class="d-flex align-center ga-2 mt-1 text-caption"
+        :class="overdue ? 'text-warning font-weight-medium' : 'text-medium-emphasis'"
+      >
+        <v-icon v-if="overdue" icon="mdi-truck-alert-outline" size="x-small" />
+        <span v-if="item.leadTimeDays != null">{{ item.leadTimeDays }}d lead</span>
+        <span v-if="item.expectedAt">ETA {{ item.expectedAt }}</span>
+      </div>
+
       <p v-if="item.notes" class="text-caption text-medium-emphasis mt-1 mb-0">{{ item.notes }}</p>
 
-      <!-- Receipt: prompt once purchased; show a view/remove row when attached. -->
-      <div v-if="item.receiptUrl || item.status === 'purchased'" class="mt-2">
+      <!-- Receipt: prompt once acquired; show a view/remove row when attached. -->
+      <div v-if="showReceipt" class="mt-2">
         <div v-if="item.receiptUrl" class="d-flex align-center ga-1">
           <a
             :href="item.receiptUrl"
@@ -166,7 +179,7 @@ async function onReceipt(e: Event) {
       <v-spacer />
       <div class="d-flex align-center mt-2">
         <v-rating
-          :model-value="item.rank"
+          :model-value="item.rank ?? 0"
           length="5"
           size="x-small"
           density="compact"
@@ -186,6 +199,9 @@ async function onReceipt(e: Event) {
 </template>
 
 <style scoped>
+.item-card--overdue {
+  border-color: rgb(var(--v-theme-warning));
+}
 .img-fallback {
   display: flex;
   align-items: center;
@@ -207,7 +223,6 @@ async function onReceipt(e: Event) {
 .pur-photo__actions :deep(.v-btn) {
   background: rgba(255, 255, 255, 0.9);
 }
-/* Compact "Add photo" affordance — replaces the old full-size empty image box. */
 .pur-photo__add {
   display: flex;
   align-items: center;
@@ -231,7 +246,6 @@ async function onReceipt(e: Event) {
   cursor: default;
   opacity: 0.7;
 }
-/* Receipt prompt — slimmer/quieter than the photo one. */
 .pur-receipt__add {
   display: flex;
   align-items: center;

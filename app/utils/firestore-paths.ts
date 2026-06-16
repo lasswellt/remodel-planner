@@ -8,14 +8,13 @@ import {
   BudgetLine,
   ChecklistItem,
   InspirationItem,
+  Item,
   Member,
   Paint,
   Permit,
   Photo,
   Project,
-  PurchaseItem,
   Room,
-  Selection,
   SharedProjectRef,
   Task,
 } from '~/models'
@@ -23,9 +22,11 @@ import { zodConverter } from '~/utils/converters'
 
 // Firestore layout (everything scoped under the authenticated user):
 //   users/{uid}/projects/{projectId}
-//     /rooms/{roomId}/{checklist,budgetLines,tasks,selections,photos,paints,purchases}
+//     /rooms/{roomId}/{checklist,budgetLines,tasks,items,photos,paints}
 //     /permits/{permitId}
 //     /inspiration/{itemId}
+// `items` is the unified Shopping & Selections collection (merged from the
+// former `selections` + `purchases`).
 //
 // Helpers return converter-bound refs so reads/writes are typed + validated.
 
@@ -50,8 +51,8 @@ export const budgetLinesCol = (db: Firestore, uid: string, projectId: string, ro
 export const tasksCol = (db: Firestore, uid: string, projectId: string, roomId: string) =>
   sub(db, uid, projectId, 'rooms', roomId, 'tasks').withConverter(zodConverter(Task))
 
-export const selectionsCol = (db: Firestore, uid: string, projectId: string, roomId: string) =>
-  sub(db, uid, projectId, 'rooms', roomId, 'selections').withConverter(zodConverter(Selection))
+export const itemsCol = (db: Firestore, uid: string, projectId: string, roomId: string) =>
+  sub(db, uid, projectId, 'rooms', roomId, 'items').withConverter(zodConverter(Item))
 
 export const photosCol = (db: Firestore, uid: string, projectId: string, roomId: string) =>
   sub(db, uid, projectId, 'rooms', roomId, 'photos').withConverter(zodConverter(Photo))
@@ -59,23 +60,20 @@ export const photosCol = (db: Firestore, uid: string, projectId: string, roomId:
 export const paintsCol = (db: Firestore, uid: string, projectId: string, roomId: string) =>
   sub(db, uid, projectId, 'rooms', roomId, 'paints').withConverter(zodConverter(Paint))
 
-export const purchasesCol = (db: Firestore, uid: string, projectId: string, roomId: string) =>
-  sub(db, uid, projectId, 'rooms', roomId, 'purchases').withConverter(zodConverter(PurchaseItem))
-
 export const permitsCol = (db: Firestore, uid: string, projectId: string) =>
   sub(db, uid, projectId, 'permits').withConverter(zodConverter(Permit))
 
 export const inspirationCol = (db: Firestore, uid: string, projectId: string) =>
   sub(db, uid, projectId, 'inspiration').withConverter(zodConverter(InspirationItem))
 
-// Project-wide dashboards (all blocked tasks, overdue selections) and the
-// rollup (all tasks + checklist items of the current project) use collection
-// group queries; rules authorize them by the denormalized uid on each doc.
+// Project-wide dashboards (all blocked tasks, overdue items) and the rollup (all
+// tasks + checklist items of the current project) use collection group queries;
+// rules authorize them by the denormalized uid on each doc.
 export const tasksGroup = (db: Firestore) =>
   collectionGroup(db, 'tasks').withConverter(zodConverter(Task))
 
-export const selectionsGroup = (db: Firestore) =>
-  collectionGroup(db, 'selections').withConverter(zodConverter(Selection))
+export const itemsGroup = (db: Firestore) =>
+  collectionGroup(db, 'items').withConverter(zodConverter(Item))
 
 export const checklistGroup = (db: Firestore) =>
   collectionGroup(db, 'checklist').withConverter(zodConverter(ChecklistItem))
@@ -85,9 +83,6 @@ export const budgetLinesGroup = (db: Firestore) =>
 
 export const photosGroup = (db: Firestore) =>
   collectionGroup(db, 'photos').withConverter(zodConverter(Photo))
-
-export const purchasesGroup = (db: Firestore) =>
-  collectionGroup(db, 'purchases').withConverter(zodConverter(PurchaseItem))
 
 // Sharing: members subcollection, invites root, shared-project pointers
 export const membersCol = (db: Firestore, ownerUid: string, projectId: string) =>

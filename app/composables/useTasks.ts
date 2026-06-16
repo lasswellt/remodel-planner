@@ -5,7 +5,7 @@ import type { Task, TaskPhase, TaskStatus } from '~/models'
 import { tasksCol } from '~/utils/firestore-paths'
 import type { Blocker } from '~/utils/task-graph'
 import { taskBlockers } from '~/utils/task-graph'
-import { useProjectSelections } from '~/composables/useSelections'
+import { useProjectItems } from '~/composables/useItems'
 import { useProjectPermits } from '~/composables/usePermits'
 import { useProjectStore } from '~/stores/project'
 import { useSyncStore } from '~/stores/sync'
@@ -16,7 +16,7 @@ import { useUndoStore } from '~/stores/undo'
 // blockers resolve. createSharedComposable so the board and the floorplan agree.
 export const useProjectTasks = createSharedComposable(() => {
   const rollup = useRollup()
-  const { selections } = useProjectSelections()
+  const { items } = useProjectItems()
   const { permits, inspections } = useProjectPermits()
 
   // Narrow to the exact shapes task-graph expects (Map value invariance means a
@@ -24,18 +24,18 @@ export const useProjectTasks = createSharedComposable(() => {
   const tasksById = computed(() =>
     new Map(rollup.tasks.value.map(t => [t.id, { label: t.label, status: t.status }])),
   )
-  const selectionsById = computed(() =>
-    new Map(selections.value.map(s => [s.id, { label: s.label, status: s.status }])),
+  const itemsById = computed(() =>
+    new Map(items.value.map(i => [i.id, { label: i.label, status: i.status }])),
   )
 
   function blockersFor(task: Task): Blocker[] {
-    return taskBlockers(task, tasksById.value, selectionsById.value, inspections.value)
+    return taskBlockers(task, tasksById.value, itemsById.value, inspections.value)
   }
   function isBlockedTask(task: Task): boolean {
     return blockersFor(task).length > 0
   }
 
-  return { tasks: rollup.tasks, selections, permits, inspections, blockersFor, isBlockedTask }
+  return { tasks: rollup.tasks, items, permits, inspections, blockersFor, isBlockedTask }
 })
 
 // Optimistic task writes (UX9); deletion is undo-snackbar (UX8).

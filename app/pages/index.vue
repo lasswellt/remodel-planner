@@ -357,7 +357,7 @@ const projectCreateOpen = ref(false)
         <v-card-title>Delete “{{ deleteTarget?.name }}”?</v-card-title>
         <v-card-text>
           This removes the room and everything attached to it — checklist,
-          budget lines, tasks, selections, and photo records. There is no undo.
+          budget lines, tasks, shopping &amp; selection items, and photo records. There is no undo.
         </v-card-text>
         <v-card-actions>
           <v-spacer />

@@ -175,8 +175,8 @@ const hasAnyProject = computed(() => projectStore.allProjects.length > 0)
         <v-card-title>Delete "{{ current?.name }}"?</v-card-title>
         <v-card-text>
           This permanently deletes the project and everything in it — rooms,
-          checklists, budget lines, tasks, selections, permits, inspiration,
-          and photo records. There is no undo.
+          checklists, budget lines, tasks, shopping &amp; selection items, permits,
+          inspiration, and photo records. There is no undo.
         </v-card-text>
         <v-card-actions>
           <v-spacer />

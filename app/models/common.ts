@@ -24,4 +24,5 @@ export const OwnerScoped = z.object({
 
 // Current export/import schema version. Import refuses newer versions and
 // migrates older ones (Build Conventions).
-export const SCHEMA_VERSION = 1
+// v2: merged the split selections[] + purchases[] collections into one items[].
+export const SCHEMA_VERSION = 2
