@@ -120,8 +120,8 @@ watch(
       :data-opening-id="o.op.id"
       class="fp-opening"
     >
-      <!-- transparent grab target along the wall -->
-      <rect :x="o.hit.x" :y="o.hit.y" :width="o.hit.w" :height="o.hit.h" fill="transparent" />
+      <!-- transparent grab target along the wall (amber wash on hover) -->
+      <rect class="fp-opening__hit" :x="o.hit.x" :y="o.hit.y" :width="o.hit.w" :height="o.hit.h" rx="2" fill="transparent" />
       <FloorplanPrims :prims="o.prims" />
       <rect
         v-if="o.op.id === selectedOpeningId"
@@ -261,6 +261,16 @@ watch(
 }
 .fp-opening {
   cursor: move;
+}
+/* Hover affordance for an opening: an amber wash so it reads as grabbable. */
+.fp-opening__hit {
+  transition: fill 0.1s ease;
+}
+.fp-opening:hover .fp-opening__hit {
+  fill: rgba(232, 144, 43, 0.16);
+  stroke: #e8902b;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
 }
 .fp-room__measure {
   pointer-events: none;

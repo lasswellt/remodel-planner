@@ -7,6 +7,7 @@ import {
   edgeSnapTargets,
   effectiveGeometry,
   emptyGeometry,
+  fixtureClearances,
   fixtureWorldRect,
   footprintFromBasis,
   interiorRect,
@@ -324,19 +325,39 @@ describe('opening move + measurement', () => {
     const r = openingHitRect(room, door)
     expect(r.x).toBe(100)
     expect(r.w).toBe(36)
-    expect(r.h).toBe(6 + 16) // wall thickness + grab band
+    expect(r.h).toBe(6 + 22) // wall thickness + grab band
     expect(r.y).toBe(-4) // small lip above the top edge, rest inside
   })
 
-  it('openingMeasures returns the gap to each corner in feet-inches', () => {
+  it('openingMeasures returns the opening width plus the gap to each corner', () => {
     const m = openingMeasures(room, door)
-    expect(m).toHaveLength(2)
+    expect(m).toHaveLength(3)
     expect(m[0]).toMatchObject({ x: 50, text: lengthLabel(100) }) // before gap mid
-    expect(m[1]).toMatchObject({ x: 188, text: lengthLabel(104) }) // after gap mid (240-100-36)
+    expect(m[1]).toMatchObject({ x: 118, text: lengthLabel(36) }) // opening width mid (100 + 36/2)
+    expect(m[2]).toMatchObject({ x: 188, text: lengthLabel(104) }) // after gap mid (240-100-36)
   })
 
-  it('omits a measurement when the opening is flush to a corner', () => {
-    expect(openingMeasures(room, { ...door, offset: 0 })).toHaveLength(1)
+  it('omits the flush-corner gap but keeps the opening width', () => {
+    // offset 0 → no "before" gap; width + "after" gap remain
+    expect(openingMeasures(room, { ...door, offset: 0 })).toHaveLength(2)
+  })
+})
+
+describe('fixtureClearances', () => {
+  const room: Geometry = gw({ x: 0, y: 0, w: 120, h: 96 })
+  const fixture: Fixture = { id: 'f1', kind: 'tub', x: 20, y: 30, w: 40, h: 20, rotation: 0 }
+
+  it('labels the gap to the nearest wall on each axis, centered in the gap', () => {
+    // world rect = { x:20, y:30, w:40, h:20 } → left 20 (< right 60), top 30 (< bottom 46)
+    const c = fixtureClearances(room, fixture)
+    expect(c).toHaveLength(2)
+    expect(c[0]).toMatchObject({ x: 10, y: 40, text: lengthLabel(20) }) // nearest horizontal (left)
+    expect(c[1]).toMatchObject({ x: 40, y: 15, text: lengthLabel(30) }) // nearest vertical (top)
+  })
+
+  it('omits an axis when the fixture is flush to a wall', () => {
+    const flush: Fixture = { ...fixture, x: 0, y: 0 } // touches left + top walls
+    expect(fixtureClearances(room, flush)).toHaveLength(0)
   })
 })
 

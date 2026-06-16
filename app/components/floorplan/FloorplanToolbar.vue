@@ -156,7 +156,8 @@ const dimItems: { title: string, value: DimDetail }[] = [
   max-width: 120px;
 }
 .fp-dim-select {
-  max-width: 170px;
+  max-width: 220px;
+  min-width: 190px;
 }
 .fp-fixture-select {
   max-width: 170px;

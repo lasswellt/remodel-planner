@@ -614,7 +614,7 @@ export function doorGeometry(geo: Geometry, op: Opening, range?: { offset: numbe
 export function openingHitRect(geo: Geometry, op: Opening): Rect {
   const ax = wallAxis(geo, op.wall)
   const lip = 4
-  const band = Math.max(ax.thickness, 0) + 16
+  const band = Math.max(ax.thickness, 0) + 22
   const sx = ax.ax + ax.dx * op.offset
   const sy = ax.ay + ax.dy * op.offset
   if (ax.dx !== 0) {
@@ -651,7 +651,24 @@ export function openingMeasures(geo: Geometry, op: Opening): { x: number, y: num
   }
   const out: { x: number, y: number, text: string }[] = []
   if (before > 0.5) out.push(mk(0, before))
+  out.push(mk(op.offset, op.width)) // the opening's own width
   if (after > 0.5) out.push(mk(op.offset + op.width, after))
+  return out
+}
+
+// Clearances from a fixture to its room walls — the gap to the nearest wall on
+// each axis, positioned in that gap. Helps place fixtures precisely.
+export function fixtureClearances(geo: Geometry, f: Fixture): { x: number, y: number, text: string }[] {
+  const r = fixtureWorldRect(geo, f)
+  const left = r.x - geo.x
+  const right = geo.x + geo.w - (r.x + r.w)
+  const top = r.y - geo.y
+  const bottom = geo.y + geo.h - (r.y + r.h)
+  const out: { x: number, y: number, text: string }[] = []
+  const h = left <= right ? { len: left, a: geo.x, b: r.x } : { len: right, a: r.x + r.w, b: geo.x + geo.w }
+  if (h.len > 3) out.push({ x: (h.a + h.b) / 2, y: r.y + r.h / 2, text: lengthLabel(Math.round(h.len)) })
+  const v = top <= bottom ? { len: top, a: geo.y, b: r.y } : { len: bottom, a: r.y + r.h, b: geo.y + geo.h }
+  if (v.len > 3) out.push({ x: r.x + r.w / 2, y: (v.a + v.b) / 2, text: lengthLabel(Math.round(v.len)) })
   return out
 }
 
