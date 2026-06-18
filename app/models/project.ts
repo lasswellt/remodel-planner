@@ -10,8 +10,5 @@ export const Project = z.object({
   totalBudgetCents: Cents,
   contingencyPct: z.number().min(0).max(100).default(15),
   createdAt: FirestoreTimestamp,
-  // Set once the one-time selections+purchases → items migration has run for
-  // this project (see utils/items-migration). Gates the idempotent migration.
-  itemsMigratedAt: FirestoreTimestamp.optional(),
 })
 export type Project = z.infer<typeof Project>

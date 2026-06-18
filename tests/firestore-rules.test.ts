@@ -148,24 +148,6 @@ describe('membership happy path', () => {
   })
 })
 
-describe('purchases collection-group read', () => {
-  it('owner and member can group-read purchases; a stranger cannot', async () => {
-    await seedProject()
-    await seed(async (ctx) => {
-      const d = ctx.firestore()
-      await setDoc(doc(d, `users/${OWNER}/projects/${PROJECT}/rooms/room1/purchases/p1`), {
-        uid: OWNER, projectId: PROJECT, roomId: 'room1', title: 'Faucet', group: 'Fixtures', status: 'idea', rank: 0,
-      })
-      await setDoc(doc(d, memberPath(MEMBER)), member(MEMBER, 'tok'))
-    })
-    const groupQuery = (uid: string) =>
-      query(collectionGroup(db(uid), 'purchases'), where('uid', '==', OWNER), where('projectId', '==', PROJECT))
-    await assertSucceeds(getDocs(groupQuery(OWNER)))
-    await assertSucceeds(getDocs(groupQuery(MEMBER)))
-    await assertFails(getDocs(groupQuery(STRANGER)))
-  })
-})
-
 describe('items (merged Shopping & Selections)', () => {
   const itemPath = (id = 'i1') => `users/${OWNER}/projects/${PROJECT}/rooms/room1/items/${id}`
   const validItem = { uid: OWNER, projectId: PROJECT, roomId: 'room1', label: 'Vanity', status: 'purchased' }

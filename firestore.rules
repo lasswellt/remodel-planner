@@ -4,7 +4,7 @@ rules_version = '2';
 // by its authenticated owner, OR by a project member (editor role) whose
 // membership doc exists at users/{ownerUid}/projects/{projectId}/members/{memberUid}.
 //
-// Project-wide dashboards use collection-group queries on tasks and selections;
+// Project-wide dashboards use collection-group queries on tasks and items;
 // those are authorized by the denormalized resource.data.uid.
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -57,11 +57,6 @@ service cloud.firestore {
         && isEnum(d.category, ['materials','labor','permits','fixtures','other'])
         && d.estimateCents is int && d.estimateCents >= 0;
     }
-    function validSelection() {
-      let d = request.resource.data;
-      return d.label is string
-        && isEnum(d.status, ['considering','decided','ordered','delivered','installed']);
-    }
     function validPermit() {
       let d = request.resource.data;
       return d.scope is string
@@ -83,13 +78,6 @@ service cloud.firestore {
     function validPaint() {
       let d = request.resource.data;
       return d.name is string;
-    }
-    function validPurchase() {
-      let d = request.resource.data;
-      return d.title is string
-        && d.group is string
-        && isEnum(d.status, ['idea','to-buy','purchased'])
-        && d.rank is int && d.rank >= 0 && d.rank <= 5;
     }
     // Unified Shopping & Selections item. Lenient: only the always-present
     // fields are required (label + a valid lifecycle status); everything else —
@@ -118,10 +106,6 @@ service cloud.firestore {
       allow read: if request.auth != null
         && (resource.data.uid == request.auth.uid || isMember(resource.data.uid, resource.data.projectId));
     }
-    match /{path=**}/selections/{selectionId} {
-      allow read: if request.auth != null
-        && (resource.data.uid == request.auth.uid || isMember(resource.data.uid, resource.data.projectId));
-    }
     match /{path=**}/checklist/{itemId} {
       allow read: if request.auth != null
         && (resource.data.uid == request.auth.uid || isMember(resource.data.uid, resource.data.projectId));
@@ -131,10 +115,6 @@ service cloud.firestore {
         && (resource.data.uid == request.auth.uid || isMember(resource.data.uid, resource.data.projectId));
     }
     match /{path=**}/photos/{photoId} {
-      allow read: if request.auth != null
-        && (resource.data.uid == request.auth.uid || isMember(resource.data.uid, resource.data.projectId));
-    }
-    match /{path=**}/purchases/{purchaseId} {
       allow read: if request.auth != null
         && (resource.data.uid == request.auth.uid || isMember(resource.data.uid, resource.data.projectId));
     }
@@ -199,11 +179,6 @@ service cloud.firestore {
             allow create, update: if (isOwner(uid) || isMember(uid, projectId)) && ownsPayload(uid) && validTask();
             allow delete: if isOwner(uid) || isMember(uid, projectId);
           }
-          match /selections/{selectionId} {
-            allow read: if isOwner(uid) || isMember(uid, projectId);
-            allow create, update: if (isOwner(uid) || isMember(uid, projectId)) && ownsPayload(uid) && validSelection();
-            allow delete: if isOwner(uid) || isMember(uid, projectId);
-          }
           match /photos/{photoId} {
             allow read: if isOwner(uid) || isMember(uid, projectId);
             allow create, update: if (isOwner(uid) || isMember(uid, projectId)) && ownsPayload(uid) && validPhoto();
@@ -214,13 +189,8 @@ service cloud.firestore {
             allow create, update: if (isOwner(uid) || isMember(uid, projectId)) && ownsPayload(uid) && validPaint();
             allow delete: if isOwner(uid) || isMember(uid, projectId);
           }
-          match /purchases/{purchaseId} {
-            allow read: if isOwner(uid) || isMember(uid, projectId);
-            allow create, update: if (isOwner(uid) || isMember(uid, projectId)) && ownsPayload(uid) && validPurchase();
-            allow delete: if isOwner(uid) || isMember(uid, projectId);
-          }
-          // Unified Shopping & Selections collection (merged from selections +
-          // purchases). The legacy blocks above stay one release for rollback.
+          // Unified Shopping & Selections collection (merged from the former
+          // selections + purchases collections).
           match /items/{itemId} {
             allow read: if isOwner(uid) || isMember(uid, projectId);
             allow create, update: if (isOwner(uid) || isMember(uid, projectId)) && ownsPayload(uid) && validItem();

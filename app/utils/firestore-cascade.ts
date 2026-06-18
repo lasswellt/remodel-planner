@@ -1,5 +1,5 @@
 import type { DocumentReference, Firestore, Query } from 'firebase/firestore'
-import { collection, getDocsFromServer, writeBatch } from 'firebase/firestore'
+import { getDocsFromServer, writeBatch } from 'firebase/firestore'
 import {
   budgetLinesCol,
   checklistCol,
@@ -51,7 +51,6 @@ export async function deleteRoomDeep(
   roomId: string,
   roomRef: DocumentReference<unknown>,
 ): Promise<void> {
-  const legacyBase = ['users', uid, 'projects', projectId, 'rooms', roomId] as const
   const refs = await collectRefs(
     checklistCol(db, uid, projectId, roomId),
     budgetLinesCol(db, uid, projectId, roomId),
@@ -59,10 +58,6 @@ export async function deleteRoomDeep(
     itemsCol(db, uid, projectId, roomId),
     photosCol(db, uid, projectId, roomId),
     paintsCol(db, uid, projectId, roomId),
-    // Legacy collections (pre-merge) — cleaned up so a deleted room orphans
-    // nothing during the migration rollback window.
-    collection(db, ...legacyBase, 'selections'),
-    collection(db, ...legacyBase, 'purchases'),
   )
   await deleteRefs(db, [...refs, roomRef])
 }
