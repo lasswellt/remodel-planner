@@ -22,7 +22,7 @@ import {
   wallAxis,
   WORLD,
 } from '~/utils/geometry'
-import { FULL_VIEW, pinchView, type ViewBox, zoomView } from '~/utils/floorplan-view'
+import { fitView, FULL_VIEW, labelScaleForWidth, pinchView, type ViewBox, zoomView } from '~/utils/floorplan-view'
 import { FIXTURE_CATALOG } from '~/config/fixtures'
 
 export type FloorplanTool = 'select' | 'draw' | 'notch' | 'opening' | 'fixture'
@@ -105,11 +105,19 @@ export function useFloorplan(opts: UseFloorplanOptions) {
   const view = ref<ViewBox>({ ...FULL_VIEW })
   const viewBox = computed(() => `${view.value.x} ${view.value.y} ${view.value.w} ${view.value.h}`)
   const zoomed = computed(() => view.value.w < WORLD.w - 0.5)
+  // Counter-scale plan text to the zoom so labels stay a consistent on-screen
+  // size instead of ballooning as you zoom in (and crowding in "all dimensions"
+  // mode). At the full-world view this is 1 (the base font sizes apply); zooming
+  // in shrinks the world-unit font proportionally. Floored so deep zoom-in keeps
+  // labels legible rather than vanishing.
+  const labelScale = computed(() => labelScaleForWidth(view.value.w))
 
   function zoomTo(newW: number, focal?: Point) { view.value = zoomView(view.value, newW, focal) }
   function zoomIn() { zoomTo(view.value.w / 1.4) }
   function zoomOut() { zoomTo(view.value.w * 1.4) }
-  function resetView() { view.value = { ...FULL_VIEW } }
+  // Frame the plan (the rooms' bounding box + margin) — the world is far bigger
+  // than any one plan, so "fit" means fit the content, not the empty grid.
+  function resetView() { view.value = fitView(opts.rooms.value) }
 
   // screen → world via the live CTM (honours viewBox + preserveAspectRatio).
   function screenToWorld(clientX: number, clientY: number): Point {
@@ -790,5 +798,6 @@ export function useFloorplan(opts: UseFloorplanOptions) {
     zoomOut,
     resetView,
     onWheel,
+    labelScale,
   }
 }

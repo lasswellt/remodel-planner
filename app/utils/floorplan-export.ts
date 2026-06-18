@@ -1,5 +1,5 @@
 import type { Fixture, Geometry, Room, RoomStatus } from '~/models'
-import { buildRoomPath, effectiveGeometry, fixtureWorldRect, sqFt, WORLD } from '~/utils/geometry'
+import { buildRoomPath, effectiveGeometry, fixtureWorldRect, roomsBounds, sqFt, WORLD } from '~/utils/geometry'
 import { allOpeningPrims, fixtureDetailPrims, primsSvg, wallPrims } from '~/utils/floorplan-draw'
 import { fixtureLabel } from '~/config/fixtures'
 import type { Progress } from '~/utils/rollup'
@@ -94,7 +94,11 @@ export function buildFloorplanSvg(input: ExportInput): string {
       input.statusByRoom[r.id] ?? r.status,
     ))
     .join('\n  ')
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${WORLD.w} ${WORLD.h}" width="${WORLD.w}" height="${WORLD.h}">
+  // Crop to the plan (rooms' bounding box + margin) rather than the whole world,
+  // so an export is tight around the drawing instead of mostly-empty grid. Empty
+  // plans fall back to the full world.
+  const v = exportViewBox(input.rooms)
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${v.x} ${v.y} ${v.w} ${v.h}" width="${v.w}" height="${v.h}">
   <title>${esc(input.title)}</title>
   <defs>
     <pattern id="grid-minor" width="${input.gridStep}" height="${input.gridStep}" patternUnits="userSpaceOnUse">
@@ -105,11 +109,26 @@ export function buildFloorplanSvg(input: ExportInput): string {
       <path d="M ${major} 0 L 0 0 0 ${major}" fill="none" stroke="${GRID_MAJOR}" stroke-width="1"/>
     </pattern>
   </defs>
-  <rect width="${WORLD.w}" height="${WORLD.h}" fill="${PLAN_BG}"/>
-  <rect width="${WORLD.w}" height="${WORLD.h}" fill="url(#grid-major)"/>
+  <rect x="${v.x}" y="${v.y}" width="${v.w}" height="${v.h}" fill="${PLAN_BG}"/>
+  <rect x="${v.x}" y="${v.y}" width="${v.w}" height="${v.h}" fill="url(#grid-major)"/>
   ${roomsMarkup}
 </svg>
 `
+}
+
+// The export viewBox: the rooms' bounding box padded by `margin`, clamped to the
+// world. Falls back to the whole world for an empty plan.
+function exportViewBox(rooms: Room[], margin = 36): { x: number, y: number, w: number, h: number } {
+  const b = roomsBounds(rooms)
+  if (!b) return { x: 0, y: 0, w: WORLD.w, h: WORLD.h }
+  const x = Math.max(0, b.x - margin)
+  const y = Math.max(0, b.y - margin)
+  return {
+    x,
+    y,
+    w: Math.min(WORLD.w, b.x + b.w + margin) - x,
+    h: Math.min(WORLD.h, b.y + b.h + margin) - y,
+  }
 }
 
 export function slugify(name: string): string {
@@ -143,9 +162,10 @@ export async function downloadPng(svg: string, filename: string, scale = 2): Pro
       img.onerror = () => reject(new Error('SVG rasterization failed'))
       img.src = url
     })
+    // Size the raster from the SVG's own (cropped) dimensions, not the world.
     const canvas = document.createElement('canvas')
-    canvas.width = WORLD.w * scale
-    canvas.height = WORLD.h * scale
+    canvas.width = (img.naturalWidth || WORLD.w) * scale
+    canvas.height = (img.naturalHeight || WORLD.h) * scale
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error('canvas 2d context unavailable')
     ctx.fillStyle = PLAN_BG

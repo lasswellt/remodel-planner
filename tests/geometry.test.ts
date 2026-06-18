@@ -24,6 +24,7 @@ import {
   outlineMeasures,
   rectFromCorners,
   rectilinearRings,
+  roomsBounds,
   rotate90,
   sameRect,
   snapScalar,
@@ -142,7 +143,7 @@ describe('rotate90', () => {
   })
 
   it('is a no-op when the rotated rect cannot fit the world (no silent truncation)', () => {
-    const wide = { x: 0, y: 0, w: 600, h: 60, rotation: 0 } // 600 > WORLD.h (480)
+    const wide = { x: 0, y: 0, w: 1000, h: 60, rotation: 0 } // 1000 > WORLD.h (960)
     expect(rotate90(wide, 6)).toEqual(wide)
   })
 })
@@ -460,6 +461,19 @@ describe('rotate90 — content remap', () => {
     const beforeLy = before.y - room.y + before.h / 2
     expect(after.x - r.x + after.w / 2).toBe(60 - beforeLy)
     expect(after.y - r.y + after.h / 2).toBe(beforeLx)
+  })
+})
+
+describe('roomsBounds', () => {
+  it('is null for an empty plan', () => {
+    expect(roomsBounds([])).toBeNull()
+  })
+  it('is the tight box over every room footprint', () => {
+    const bounds = roomsBounds([
+      { geometry: g(100, 200, 120, 60) },
+      { geometry: g(300, 150, 60, 240) },
+    ])
+    expect(bounds).toEqual({ x: 100, y: 150, w: 260, h: 240 }) // 100..360 × 150..390
   })
 })
 

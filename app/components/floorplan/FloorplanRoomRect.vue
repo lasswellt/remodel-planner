@@ -26,7 +26,14 @@ const props = defineProps<{
   // Footprints of rooms painted on top of this one — dimension labels inside any
   // of these are hidden so they don't collide under a covering room.
   coveredBy?: Rect[]
+  // Counter-scales label text to the current zoom so it stays a consistent
+  // on-screen size (1 = full-world view; smaller when zoomed in).
+  labelScale?: number
 }>()
+
+// Label font + line-gap multiplier (the base sizes below are the full-world
+// values). Defaults to 1 so the export / tests render at the base sizes.
+const ls = computed(() => props.labelScale ?? 1)
 
 // A label point is hidden if it falls inside any covering room's footprint.
 function uncovered(p: { x: number, y: number }): boolean {
@@ -165,7 +172,7 @@ watch(
       :x="m.x"
       :y="m.y"
       text-anchor="middle"
-      font-size="11"
+      :font-size="11 * ls"
       font-weight="600"
       :fill="LABEL_COLOR"
     >{{ m.text }}</text>
@@ -178,7 +185,7 @@ watch(
       :y="m.y"
       text-anchor="middle"
       dominant-baseline="middle"
-      font-size="10"
+      :font-size="10 * ls"
       font-weight="600"
       :fill="LABEL_COLOR"
     >{{ m.text }}</text>
@@ -186,27 +193,27 @@ watch(
       <text
         class="fp-room__text"
         :x="geometry.x + geometry.w / 2"
-        :y="geometry.y + geometry.h / 2 - 2"
+        :y="geometry.y + geometry.h / 2 - 2 * ls"
         text-anchor="middle"
-        font-size="13"
+        :font-size="13 * ls"
         font-weight="600"
       >{{ label }}</text>
       <text
         v-if="showDims"
         class="fp-room__text fp-room__text--dim"
         :x="geometry.x + geometry.w / 2"
-        :y="geometry.y + geometry.h / 2 + 14"
+        :y="geometry.y + geometry.h / 2 + 14 * ls"
         text-anchor="middle"
-        font-size="11"
+        :font-size="11 * ls"
       >{{ dimsLabel(geometry) }}</text>
       <!-- Effective area drops when a higher room bites this one (overlap). -->
       <text
         v-if="showDims && bitten && geometry.h >= 54"
         class="fp-room__text fp-room__text--cut"
         :x="geometry.x + geometry.w / 2"
-        :y="geometry.y + geometry.h / 2 + 28"
+        :y="geometry.y + geometry.h / 2 + 28 * ls"
         text-anchor="middle"
-        font-size="11"
+        :font-size="11 * ls"
         font-weight="600"
       >{{ effectiveArea }} sq ft</text>
     </template>
@@ -215,9 +222,9 @@ watch(
       v-else-if="status === 'done' && !covered"
       class="fp-room__text"
       :x="geometry.x + geometry.w / 2"
-      :y="geometry.y + geometry.h / 2 + 4"
+      :y="geometry.y + geometry.h / 2 + 4 * ls"
       text-anchor="middle"
-      :font-size="Math.min(13, geometry.h - 4, geometry.w - 4)"
+      :font-size="Math.min(13 * ls, geometry.h - 4, geometry.w - 4)"
       font-weight="600"
     >✓</text>
     <!-- Fixtures / obstructions sit on the floor; selectable + draggable -->
@@ -228,6 +235,7 @@ watch(
       :fixture="f"
       :selected="f.id === selectedFixtureId"
       :show-size="dimDetail === 'all'"
+      :label-scale="ls"
     />
     <g v-if="showRing" class="fp-room__ring">
       <title>{{ progress.pct }}% complete ({{ progress.done }}/{{ progress.total }})</title>

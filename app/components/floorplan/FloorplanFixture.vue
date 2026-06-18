@@ -13,7 +13,11 @@ const props = defineProps<{
   fixture: Fixture
   selected: boolean
   showSize?: boolean
+  // Counter-scales label text to the zoom (see FloorplanRoomRect). 1 = base size.
+  labelScale?: number
 }>()
+
+const ls = computed(() => props.labelScale ?? 1)
 
 const rect = computed(() => fixtureWorldRect(props.roomGeometry, props.fixture))
 const detail = computed(() => fixtureDetailPrims(rect.value, props.fixture.kind))
@@ -56,7 +60,7 @@ const clearances = computed(() => (props.showSize ? fixtureClearances(props.room
       :y="c.y"
       text-anchor="middle"
       dominant-baseline="middle"
-      font-size="8"
+      :font-size="8 * ls"
       font-weight="600"
       :fill="LABEL_COLOR"
     >{{ c.text }}</text>
@@ -64,18 +68,18 @@ const clearances = computed(() => (props.showSize ? fixtureClearances(props.room
       v-if="showLabel"
       class="fp-fixture__label"
       :x="rect.x + rect.w / 2"
-      :y="rect.y + rect.h / 2 + (showSizeLabel ? -2 : 3)"
+      :y="rect.y + rect.h / 2 + (showSizeLabel ? -2 : 3) * ls"
       text-anchor="middle"
-      font-size="9"
+      :font-size="9 * ls"
       :fill="FIXTURE_LABEL"
     >{{ label }}</text>
     <text
       v-if="showSizeLabel"
       class="fp-fixture__label"
       :x="rect.x + rect.w / 2"
-      :y="rect.y + rect.h / 2 + 9"
+      :y="rect.y + rect.h / 2 + 9 * ls"
       text-anchor="middle"
-      font-size="8"
+      :font-size="8 * ls"
       :fill="FIXTURE_LABEL"
       opacity="0.75"
     >{{ sizeLabel }}</text>

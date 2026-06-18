@@ -73,7 +73,9 @@ useEventListener(window, 'keydown', fp.onKeydown)
 
 // The summary panel's footer rotate button rotates the ROOM (the fixture editor
 // has its own rotate); routed here so it includes any in-flight overlay/nudge.
-defineExpose({ rotateRoom: fp.rotateSelected })
+// fitView frames the plan to its rooms — called on floor/project switch and the
+// first time rooms load, so a plan is never lost in a corner of the large grid.
+defineExpose({ rotateRoom: fp.rotateSelected, fitView: fp.resetView })
 
 // Live stacking snapshot: each room with its live geometry and effective z. The
 // room currently being dragged is forced to the top of its group so it bites
@@ -196,6 +198,7 @@ const ghost = computed(() => props.rooms.length === 0)
       :selected-opening-id="selectedOpeningId"
       :dim-detail="dimDetail"
       :covered-by="coveredByRoom[room.id]"
+      :label-scale="fp.labelScale.value"
     />
 
     <!-- Draw preview -->
@@ -284,22 +287,25 @@ const ghost = computed(() => props.rooms.length === 0)
       aria-label="Start drawing your first room"
       @click="tool = 'draw'"
     >
-      <!-- fill=transparent (not none) so the whole ghost area is clickable -->
+      <!-- fill=transparent (not none) so the whole ghost area is clickable.
+           Sizes are world units; the empty plan always shows the full world, so
+           these are scaled to the world dimensions to keep a constant on-screen
+           size (≈ a quarter of the canvas). -->
       <rect
-        :x="WORLD.w / 2 - 96"
-        :y="WORLD.h / 2 - 78"
-        width="192"
-        height="132"
-        rx="6"
+        :x="WORLD.w / 2 - 192"
+        :y="WORLD.h / 2 - 156"
+        width="384"
+        height="264"
+        rx="12"
         fill="transparent"
         stroke="#8A93A1"
-        stroke-width="2"
-        stroke-dasharray="10 8"
+        stroke-width="3"
+        stroke-dasharray="20 16"
       />
-      <text :x="WORLD.w / 2" :y="WORLD.h / 2 - 6" text-anchor="middle" font-size="15" font-weight="600" fill="#5B7083">
+      <text :x="WORLD.w / 2" :y="WORLD.h / 2 - 12" text-anchor="middle" font-size="30" font-weight="600" fill="#5B7083">
         Draw your first room
       </text>
-      <text :x="WORLD.w / 2" :y="WORLD.h / 2 + 16" text-anchor="middle" font-size="11" fill="#8A93A1">
+      <text :x="WORLD.w / 2" :y="WORLD.h / 2 + 32" text-anchor="middle" font-size="22" fill="#8A93A1">
         Click here, then drag on the grid
       </text>
     </g>

@@ -3,7 +3,7 @@ import type { Fixture, Geometry, Opening, WallSide } from '~/models'
 // All floorplan math lives here, pure and unit-tested. World units are inches:
 // the SVG viewBox is 1 unit = 1 inch, so geometry persists in real-world
 // dimensions and sq ft falls out of w*h directly.
-export const WORLD = { w: 720, h: 480 } as const // 60ft x 40ft per floor
+export const WORLD = { w: 1440, h: 960 } as const // 120ft x 80ft per floor
 export const DEFAULT_GRID_STEP = 6 // inches
 export const GRID_STEPS = [3, 6, 12] as const
 export const MIN_ROOM_SIZE = 12 // inches; a room can never collapse below this
@@ -356,6 +356,22 @@ export interface Rect { x: number, y: number, w: number, h: number }
 
 export function footprintRect(geo: Geometry): Rect {
   return { x: geo.x, y: geo.y, w: geo.w, h: geo.h }
+}
+
+// Tight bounding box (world coords) over a set of rooms' footprints, or null if
+// none. The world is far larger than any single plan, so view-framing and export
+// crop to this box (plus a margin) rather than the whole empty grid.
+export function roomsBounds(rooms: { geometry: Geometry }[]): Rect | null {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+  for (const r of rooms) {
+    const g = r.geometry
+    x0 = Math.min(x0, g.x)
+    y0 = Math.min(y0, g.y)
+    x1 = Math.max(x1, g.x + g.w)
+    y1 = Math.max(y1, g.y + g.h)
+  }
+  if (!Number.isFinite(x0)) return null
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
 }
 
 // Stacking key. A pinned room always sorts above any unpinned room regardless of

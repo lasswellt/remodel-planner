@@ -44,9 +44,24 @@ const selectedRoom = computed(
   () => floorRooms.value.find(r => r.id === selectedId.value) ?? null,
 )
 
-watch(floor, () => { selectedId.value = null; selectedFixtureId.value = null; selectedOpeningId.value = null })
+watch(floor, () => {
+  selectedId.value = null
+  selectedFixtureId.value = null
+  selectedOpeningId.value = null
+  // Re-frame the plan on the floor we switched to (the world is large; fit to
+  // the rooms, not the empty grid).
+  nextTick(() => canvas.value?.fitView())
+})
 // Exit notch mode when the selection is cleared
 watch(selectedId, (id) => { if (!id && tool.value === 'notch') tool.value = 'select' })
+// Frame the plan when a floor's rooms first load (async) or it goes empty↔full.
+// Guarded to the 0↔non-0 transition so ordinary geometry edits never fight a
+// user's manual zoom/pan. `immediate` also frames a plan already cached at mount.
+watch(
+  () => floorRooms.value.length === 0,
+  () => nextTick(() => canvas.value?.fitView()),
+  { immediate: true },
+)
 watch(() => projectStore.currentProjectId, () => {
   selectedId.value = null
   selectedFixtureId.value = null
@@ -54,6 +69,7 @@ watch(() => projectStore.currentProjectId, () => {
   panelOpen.value = false
   floor.value = 1
   addedTop.value = 1
+  nextTick(() => canvas.value?.fitView())
 })
 
 // Double-tap a room (mobile) → select it and raise its editor sheet.
@@ -219,6 +235,64 @@ function addFloor() {
   floor.value = addedTop.value
 }
 
+// --- delete floor (removes the floor and every room on it, then collapses the
+// numbering so floors stay contiguous 1..top — no gap left behind) ---
+const deleteFloorTarget = ref<number | null>(null)
+const deleteFloorRoomCount = computed(() =>
+  deleteFloorTarget.value === null
+    ? 0
+    : roomsStore.rooms.filter(r => r.floor === deleteFloorTarget.value).length,
+)
+
+function onDeleteFloor() {
+  const n = floor.value
+  // An empty floor is low-stakes — drop it without the confirm dialog.
+  if (roomsStore.rooms.every(r => r.floor !== n)) { void removeFloor(n); return }
+  deleteFloorTarget.value = n
+}
+
+async function confirmDeleteFloor() {
+  const n = deleteFloorTarget.value
+  deleteFloorTarget.value = null
+  if (n !== null) await removeFloor(n)
+}
+
+async function removeFloor(n: number) {
+  const prevFloor = floor.value
+  const prevAddedTop = addedTop.value
+  const newTop = Math.max(1, Math.max(...floors.value) - 1)
+  // Snapshot the affected rooms before any await so reactivity can't race us.
+  const toRemove = roomsStore.rooms.filter(r => r.floor === n)
+  const toShift = roomsStore.rooms.filter(r => r.floor > n)
+  // Move off the doomed floor first, so the canvas never points at a floor mid-
+  // teardown; clear any selection/sheet tied to a room about to vanish.
+  selectedId.value = null
+  selectedFixtureId.value = null
+  selectedOpeningId.value = null
+  panelOpen.value = false
+  floor.value = Math.min(n, newTop)
+  addedTop.value = newTop
+  try {
+    // Best-effort two-phase mutation (not transactional): 1. delete every room on
+    // this floor (deep cascade: checklist, budget lines, tasks, items, paints,
+    // photo records), then 2. shift every higher floor down one so the numbering
+    // stays contiguous. deleteRoomDeep needs a server round-trip and fails fast
+    // offline — the deletes reject before any shift runs, so a gap can't form.
+    await Promise.all(toRemove.map(r => roomsStore.removeRoom(r.id)))
+    await Promise.all(toShift.map(r => roomsStore.updateRoom(r.id, { floor: r.floor - 1 })))
+    // Re-frame onto whatever now occupies the active floor (middle-floor deletes
+    // keep floor.value unchanged, so the floor watcher wouldn't fire on its own).
+    nextTick(() => canvas.value?.fitView())
+  }
+  catch {
+    // Nothing was deleted (offline) — restore the floor/tab state we optimistically
+    // changed so the user isn't silently moved off an intact floor.
+    floor.value = prevFloor
+    addedTop.value = prevAddedTop
+    deleteError.value = true
+  }
+}
+
 // --- export ---
 async function onExport(kind: 'svg' | 'png') {
   const title = `${projectStore.currentProject?.name ?? 'Floorplan'} — Floor ${floor.value}`
@@ -272,6 +346,7 @@ const projectCreateOpen = ref(false)
       :export-disabled="floorRooms.length === 0"
       :has-selection="!!selectedId"
       @add-floor="addFloor"
+      @delete-floor="onDeleteFloor"
       @export="onExport"
     />
 
@@ -367,8 +442,25 @@ const projectCreateOpen = ref(false)
       </v-card>
     </v-dialog>
 
+    <v-dialog :model-value="deleteFloorTarget !== null" max-width="460" @update:model-value="deleteFloorTarget = null">
+      <v-card>
+        <v-card-title>Delete Floor {{ deleteFloorTarget }}?</v-card-title>
+        <v-card-text>
+          This permanently deletes Floor {{ deleteFloorTarget }} and all
+          {{ deleteFloorRoomCount }} room{{ deleteFloorRoomCount === 1 ? '' : 's' }}
+          on it — including each room’s checklist, budget lines, tasks, items, paint
+          selections, and photo records. Floors above it shift down. There is no undo.
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="deleteFloorTarget = null">Cancel</v-btn>
+          <v-btn color="error" @click="confirmDeleteFloor">Delete floor</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-snackbar v-model="deleteError" color="error" timeout="6000">
-      Couldn’t delete the room — you appear to be offline. Reconnect and try again.
+      Couldn’t finish deleting — you appear to be offline. Reconnect and try again.
     </v-snackbar>
   </div>
 

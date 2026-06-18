@@ -68,4 +68,18 @@ describe('buildFloorplanSvg with walls / openings / fixtures', () => {
     expect(bath).toBeDefined()
     expect((bath!.match(/L /g) ?? []).length).toBeGreaterThan(3)
   })
+
+  it('crops the viewBox to the rooms plus a margin (not the whole world)', () => {
+    // bounds: x 60..260, y 60..230; margin 36, clamped to the world.
+    expect(svg).toContain('viewBox="24 24 272 242"')
+    expect(svg).toContain('width="272" height="242"')
+  })
+})
+
+describe('buildFloorplanSvg with no rooms', () => {
+  it('falls back to the full world viewBox', () => {
+    const svg = buildFloorplanSvg({ rooms: [], gridStep: 6, title: 'Empty', progressByRoom: {}, statusByRoom: {} })
+    expect(svg).toContain('viewBox="0 0 1440 960"')
+    expect(svg).toContain('width="1440" height="960"')
+  })
 })

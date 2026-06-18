@@ -15,6 +15,7 @@ defineProps<{
 
 const emit = defineEmits<{
   addFloor: []
+  deleteFloor: []
   export: [kind: 'svg' | 'png']
 }>()
 
@@ -106,6 +107,14 @@ const dimItems: { title: string, value: DimDetail }[] = [
       variant="tonal"
       aria-label="Add a floor"
       @click="emit('addFloor')"
+    />
+    <v-btn
+      icon="mdi-delete-outline"
+      size="x-small"
+      variant="tonal"
+      :disabled="floors.length <= 1"
+      :aria-label="`Delete floor ${floor}`"
+      @click="emit('deleteFloor')"
     />
 
     <v-spacer />
