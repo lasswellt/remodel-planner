@@ -22,7 +22,7 @@ import {
   wallAxis,
   WORLD,
 } from '~/utils/geometry'
-import { fitView, FULL_VIEW, labelScaleForWidth, pinchView, type ViewBox, zoomView } from '~/utils/floorplan-view'
+import { fitView, FULL_VIEW, LABEL_SCALE, labelScaleForWidth, pinchView, type ViewBox, zoomView } from '~/utils/floorplan-view'
 import { FIXTURE_CATALOG } from '~/config/fixtures'
 
 export type FloorplanTool = 'select' | 'draw' | 'notch' | 'opening' | 'fixture'
@@ -110,7 +110,7 @@ export function useFloorplan(opts: UseFloorplanOptions) {
   // mode). At the full-world view this is 1 (the base font sizes apply); zooming
   // in shrinks the world-unit font proportionally. Floored so deep zoom-in keeps
   // labels legible rather than vanishing.
-  const labelScale = computed(() => labelScaleForWidth(view.value.w))
+  const labelScale = computed(() => LABEL_SCALE * labelScaleForWidth(view.value.w))
 
   function zoomTo(newW: number, focal?: Point) { view.value = zoomView(view.value, newW, focal) }
   function zoomIn() { zoomTo(view.value.w / 1.4) }

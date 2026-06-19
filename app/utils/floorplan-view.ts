@@ -22,6 +22,10 @@ export const FIT_MARGIN = 48 // 4 ft
 // Floor for the label counter-scale so labels never vanish when deeply zoomed in.
 export const LABEL_MIN_SCALE = 0.3
 
+// Overall on-screen label size knob (multiplies the zoom counter-scale). Lower =
+// smaller plan text everywhere. Tune here.
+export const LABEL_SCALE = 0.6
+
 // Counter-scale factor for plan label text at a given view width: 1 at the full
 // world (base font sizes apply), shrinking proportionally as you zoom in, floored
 // at LABEL_MIN_SCALE. Keeps labels a consistent on-screen size instead of
