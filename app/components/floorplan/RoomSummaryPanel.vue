@@ -39,6 +39,7 @@ const projectStore = useProjectStore()
 const roomsStore = useRoomsStore()
 const rollup = useRollup()
 const items = useProjectItems()
+const ledger = useProjectLedger()
 
 const overdueItems = computed(() =>
   items.byRoom(props.room.id).filter(i => items.isItemOverdue(i)),
@@ -57,10 +58,13 @@ const linesSource = computed(() =>
 )
 const budgetLines = useCollection(linesSource, { ssrKey: 'panel-budget' })
 
-// UX7: lead with remaining (estimate − spent), not with spent.
+// UX7: lead with remaining (estimate − spent). Estimate is the sum of the
+// room's budget-line estimates; spent is the room's spending-ledger total —
+// the single actual-spend source, shared with the budget page and the room's
+// ledger section (was budget-line actuals, which double-counted spend).
 const budget = computed(() => {
   const estimate = budgetLines.value.reduce((sum, l) => sum + l.estimateCents, 0)
-  const spent = budgetLines.value.reduce((sum, l) => sum + (l.actualCents ?? 0), 0)
+  const spent = ledger.roomTotalCents(props.room.id)
   return { estimate, spent, remaining: estimate - spent }
 })
 
@@ -704,7 +708,7 @@ const statusItems: { value: RoomStatus, title: string }[] = [
 
       <div class="mb-4">
         <div class="text-body-2 mb-1">Budget</div>
-        <template v-if="budgetLines.length > 0">
+        <template v-if="budget.estimate > 0">
           <div class="text-h6" :class="budget.remaining < 0 ? 'text-error' : 'text-success'">
             {{ formatMoney(Math.abs(budget.remaining)) }}
             {{ budget.remaining < 0 ? 'over' : 'remaining' }}
@@ -718,6 +722,12 @@ const statusItems: { value: RoomStatus, title: string }[] = [
           <div class="text-caption text-medium-emphasis">
             {{ formatMoney(budget.spent) }} spent of {{ formatMoney(budget.estimate) }} estimated
           </div>
+        </template>
+        <!-- Spend logged but no estimate to measure against — show the ledger
+             total without an over/remaining framing. -->
+        <template v-else-if="budget.spent > 0">
+          <div class="text-h6">{{ formatMoney(budget.spent) }} spent</div>
+          <div class="text-caption text-medium-emphasis">No estimate set yet</div>
         </template>
         <p v-else class="text-body-2 text-medium-emphasis ma-0">
           No budget lines yet — the budget phase adds typical cost ranges per room type.
