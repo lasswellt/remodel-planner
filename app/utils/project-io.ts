@@ -3,6 +3,7 @@ import { Timestamp } from 'firebase/firestore'
 import {
   BudgetLine,
   ChecklistItem,
+  Expense,
   InspirationItem,
   Item,
   Paint,
@@ -28,6 +29,7 @@ export interface ProjectBundle {
   paints: Paint[]
   permits: Permit[]
   inspiration: InspirationItem[]
+  expenses: Expense[]
 }
 
 export interface ProjectExport {
@@ -103,11 +105,8 @@ function migrateSelectionDoc(s: Record<string, unknown>): Record<string, unknown
   return { ...s, status: mapSelectionStatus(s.status) }
 }
 
-// Forward-migrate an older export to the current schema. Newer-than-current
-// exports are refused by importProject.
-//   v1 → v2: fold selections[] + purchases[] into one items[].
-function migrate(data: ProjectExport): ProjectExport {
-  if (data.schemaVersion >= 2) return data
+// v1 → v2: fold selections[] + purchases[] into one items[].
+function migrateV1toV2(data: ProjectExport): ProjectExport {
   const b = (data.bundle ?? {}) as Record<string, unknown>
   const selections = Array.isArray(b.selections) ? (b.selections as Record<string, unknown>[]) : []
   const purchases = Array.isArray(b.purchases) ? (b.purchases as Record<string, unknown>[]) : []
@@ -117,6 +116,26 @@ function migrate(data: ProjectExport): ProjectExport {
   const items = [...new Map(merged.map(i => [i.id as string, i])).values()]
   const { selections: _s, purchases: _p, ...restBundle } = b
   return { ...data, schemaVersion: 2, bundle: { ...restBundle, items } }
+}
+
+// v2 → v3: the per-room spending ledger (expenses[]) was added. Older exports
+// predate it, so seed an empty ledger to satisfy the bundle schema.
+function migrateV2toV3(data: ProjectExport): ProjectExport {
+  const b = (data.bundle ?? {}) as Record<string, unknown>
+  return {
+    ...data,
+    schemaVersion: 3,
+    bundle: { ...b, expenses: Array.isArray(b.expenses) ? b.expenses : [] },
+  }
+}
+
+// Forward-migrate an older export to the current schema, one version at a time.
+// Newer-than-current exports are refused by importProject.
+function migrate(data: ProjectExport): ProjectExport {
+  let d = data
+  if (d.schemaVersion < 2) d = migrateV1toV2(d)
+  if (d.schemaVersion < 3) d = migrateV2toV3(d)
+  return d
 }
 
 const BundleSchema = z.object({
@@ -130,6 +149,7 @@ const BundleSchema = z.object({
   paints: z.array(Paint),
   permits: z.array(Permit),
   inspiration: z.array(InspirationItem),
+  expenses: z.array(Expense),
 })
 
 // Validate + rebuild a project tree from an export document. Refuses exports

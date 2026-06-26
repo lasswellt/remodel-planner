@@ -187,6 +187,43 @@ describe('items (merged Shopping & Selections)', () => {
   })
 })
 
+describe('expenses (spending ledger)', () => {
+  const expensePath = (id = 'e1') => `users/${OWNER}/projects/${PROJECT}/rooms/room1/expenses/${id}`
+  const validExpense = { uid: OWNER, projectId: PROJECT, roomId: 'room1', label: 'Tile', category: 'materials', amountCents: 45_210, date: '2026-06-20' }
+
+  it('owner/member can write a valid expense; bad category or amount is rejected', async () => {
+    await seedProject()
+    await seed(async ctx => setDoc(doc(ctx.firestore(), memberPath(MEMBER)), member(MEMBER, 'tok')))
+    await assertSucceeds(setDoc(doc(db(OWNER), expensePath()), validExpense))
+    await assertSucceeds(setDoc(doc(db(MEMBER), expensePath('e2')), validExpense))
+    // Out-of-enum category.
+    await assertFails(setDoc(doc(db(OWNER), expensePath('e3')), { ...validExpense, category: 'misc' }))
+    // Non-integer / negative amount.
+    await assertFails(setDoc(doc(db(OWNER), expensePath('e4')), { ...validExpense, amountCents: -5 }))
+    // Missing required fields (no label).
+    await assertFails(setDoc(doc(db(OWNER), expensePath('e5')), { uid: OWNER, projectId: PROJECT, roomId: 'room1', category: 'materials', amountCents: 100, date: '2026-06-20' }))
+  })
+
+  it('owner and member can group-read expenses; a stranger cannot', async () => {
+    await seedProject()
+    await seed(async (ctx) => {
+      const d = ctx.firestore()
+      await setDoc(doc(d, expensePath()), validExpense)
+      await setDoc(doc(d, memberPath(MEMBER)), member(MEMBER, 'tok'))
+    })
+    const groupQuery = (uid: string) =>
+      query(collectionGroup(db(uid), 'expenses'), where('uid', '==', OWNER), where('projectId', '==', PROJECT))
+    await assertSucceeds(getDocs(groupQuery(OWNER)))
+    await assertSucceeds(getDocs(groupQuery(MEMBER)))
+    await assertFails(getDocs(groupQuery(STRANGER)))
+  })
+
+  it('a stranger cannot write an expense to another user\'s room', async () => {
+    await seedProject()
+    await assertFails(setDoc(doc(db(STRANGER), expensePath('e6')), validExpense))
+  })
+})
+
 describe('invite tokens', () => {
   it('owner can create an invite for their own project; others cannot impersonate the owner', async () => {
     await assertSucceeds(setDoc(doc(db(OWNER), 'invites/t1'), {

@@ -3,6 +3,7 @@ import { getDocsFromServer, writeBatch } from 'firebase/firestore'
 import {
   budgetLinesCol,
   checklistCol,
+  expensesCol,
   inspirationCol,
   itemsCol,
   paintsCol,
@@ -58,6 +59,7 @@ export async function deleteRoomDeep(
     itemsCol(db, uid, projectId, roomId),
     photosCol(db, uid, projectId, roomId),
     paintsCol(db, uid, projectId, roomId),
+    expensesCol(db, uid, projectId, roomId),
   )
   await deleteRefs(db, [...refs, roomRef])
 }

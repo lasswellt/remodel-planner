@@ -57,6 +57,15 @@ service cloud.firestore {
         && isEnum(d.category, ['materials','labor','permits','fixtures','other'])
         && d.estimateCents is int && d.estimateCents >= 0;
     }
+    // Spending-ledger entry: a dated actual-spend transaction. Requires a label,
+    // a budget category, a non-negative integer-cents amount, and a date string.
+    function validExpense() {
+      let d = request.resource.data;
+      return d.label is string
+        && isEnum(d.category, ['materials','labor','permits','fixtures','other'])
+        && d.amountCents is int && d.amountCents >= 0
+        && d.date is string;
+    }
     function validPermit() {
       let d = request.resource.data;
       return d.scope is string
@@ -119,6 +128,10 @@ service cloud.firestore {
         && (resource.data.uid == request.auth.uid || isMember(resource.data.uid, resource.data.projectId));
     }
     match /{path=**}/items/{itemId} {
+      allow read: if request.auth != null
+        && (resource.data.uid == request.auth.uid || isMember(resource.data.uid, resource.data.projectId));
+    }
+    match /{path=**}/expenses/{expenseId} {
       allow read: if request.auth != null
         && (resource.data.uid == request.auth.uid || isMember(resource.data.uid, resource.data.projectId));
     }
@@ -194,6 +207,12 @@ service cloud.firestore {
           match /items/{itemId} {
             allow read: if isOwner(uid) || isMember(uid, projectId);
             allow create, update: if (isOwner(uid) || isMember(uid, projectId)) && ownsPayload(uid) && validItem();
+            allow delete: if isOwner(uid) || isMember(uid, projectId);
+          }
+          // Per-room spending ledger (actual dated transactions).
+          match /expenses/{expenseId} {
+            allow read: if isOwner(uid) || isMember(uid, projectId);
+            allow create, update: if (isOwner(uid) || isMember(uid, projectId)) && ownsPayload(uid) && validExpense();
             allow delete: if isOwner(uid) || isMember(uid, projectId);
           }
         }

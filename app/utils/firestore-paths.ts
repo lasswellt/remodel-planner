@@ -7,6 +7,7 @@ import {
 import {
   BudgetLine,
   ChecklistItem,
+  Expense,
   InspirationItem,
   Item,
   Member,
@@ -22,9 +23,10 @@ import { zodConverter } from '~/utils/converters'
 
 // Firestore layout (everything scoped under the authenticated user):
 //   users/{uid}/projects/{projectId}
-//     /rooms/{roomId}/{checklist,budgetLines,tasks,items,photos,paints}
+//     /rooms/{roomId}/{checklist,budgetLines,tasks,items,photos,paints,expenses}
 //     /permits/{permitId}
 //     /inspiration/{itemId}
+// `expenses` is the per-room spending ledger (actual dated transactions).
 // `items` is the unified Shopping & Selections collection (merged from the
 // former `selections` + `purchases`).
 //
@@ -60,6 +62,9 @@ export const photosCol = (db: Firestore, uid: string, projectId: string, roomId:
 export const paintsCol = (db: Firestore, uid: string, projectId: string, roomId: string) =>
   sub(db, uid, projectId, 'rooms', roomId, 'paints').withConverter(zodConverter(Paint))
 
+export const expensesCol = (db: Firestore, uid: string, projectId: string, roomId: string) =>
+  sub(db, uid, projectId, 'rooms', roomId, 'expenses').withConverter(zodConverter(Expense))
+
 export const permitsCol = (db: Firestore, uid: string, projectId: string) =>
   sub(db, uid, projectId, 'permits').withConverter(zodConverter(Permit))
 
@@ -80,6 +85,9 @@ export const checklistGroup = (db: Firestore) =>
 
 export const budgetLinesGroup = (db: Firestore) =>
   collectionGroup(db, 'budgetLines').withConverter(zodConverter(BudgetLine))
+
+export const expensesGroup = (db: Firestore) =>
+  collectionGroup(db, 'expenses').withConverter(zodConverter(Expense))
 
 export const photosGroup = (db: Firestore) =>
   collectionGroup(db, 'photos').withConverter(zodConverter(Photo))

@@ -72,5 +72,11 @@ export function seededBundle(): ProjectBundle {
     inspiration: [
       { ...base, id: 'insp-item-1', roomType: 'kitchen', title: 'IKEA Kitchen Gallery', url: 'https://www.ikea.com/us/en/rooms/kitchen/gallery/', psychologyTags: ['lighting-circadian'] },
     ],
+    // Spending ledger: dated actual-spend transactions (the cabinet deposit and
+    // a demo-labor draw), distinct from the estimate-centric budgetLines above.
+    expenses: [
+      { ...base, id: 'exp-1', roomId: 'room-kitchen', label: 'Cabinet deposit', category: 'materials', amountCents: 500_000, date: '2026-06-10', vendor: 'KraftMaid' },
+      { ...base, id: 'exp-2', roomId: 'room-kitchen', label: 'Demo labor', category: 'labor', amountCents: 80_000, date: '2026-06-15', note: 'Day rate' },
+    ],
   }
 }

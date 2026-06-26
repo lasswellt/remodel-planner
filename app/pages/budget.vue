@@ -3,18 +3,28 @@ import { BUDGET_CATEGORY_LABELS } from '~/utils/budget-math'
 import { downloadCsv, toCsv } from '~/utils/csv'
 import { formatMoney, parseMoney } from '~/utils/money'
 import { useProjectBudget } from '~/composables/useBudget'
+import { useProjectLedger } from '~/composables/useLedger'
 import { useProjectStore } from '~/stores/project'
 import { useRoomsStore } from '~/stores/rooms'
 
 // Phase 6 budget dashboard. Leads with remaining (UX7); over-budget rooms are
 // isolated to the top with warning treatment (UX6); contingency is framed as
-// protection with a planning-fallacy note.
+// protection with a planning-fallacy note. "Spent (actual)" comes from the
+// per-room spending ledger (useProjectLedger), distinct from the estimates.
 const projectStore = useProjectStore()
 const roomsStore = useRoomsStore()
 const budget = useProjectBudget()
+const ledger = useProjectLedger()
 
 const hasProject = computed(() => !!projectStore.currentProjectId)
 const project = computed(() => budget.project.value)
+
+// Actual spend logged in the ledger, as a share of the total budget (UX: lets
+// the owner see burn-down against the budget, not just committed estimates).
+const spentPct = computed(() => {
+  const total = project.value.totalBudgetCents
+  return total > 0 ? Math.round((ledger.totalCents.value / total) * 100) : null
+})
 
 // Over-budget rooms first (UX6), then by floor + name.
 const rooms = computed(() =>
@@ -129,6 +139,13 @@ function exportCsv() {
               </div>
             </div>
             <div>
+              <div class="text-body-2 text-medium-emphasis">Spent (actual)</div>
+              <div class="text-h6">{{ formatMoney(ledger.totalCents.value) }}</div>
+              <div v-if="spentPct != null" class="text-caption text-medium-emphasis">
+                {{ spentPct }}% of budget
+              </div>
+            </div>
+            <div>
               <div class="text-body-2 text-medium-emphasis d-flex align-center ga-1">
                 Contingency ({{ projectStore.currentProject?.contingencyPct ?? 15 }}%)
                 <v-icon icon="mdi-information-outline" size="x-small">
@@ -189,7 +206,10 @@ function exportCsv() {
               >Over budget</v-chip>
               <v-spacer />
               <span class="text-body-2 text-medium-emphasis mr-2">
-                {{ formatMoney(budget.byRoom(room.id).estimateCents) }}
+                {{ formatMoney(budget.byRoom(room.id).estimateCents) }} est
+                <template v-if="ledger.roomTotalCents(room.id) > 0">
+                  · {{ formatMoney(ledger.roomTotalCents(room.id)) }} spent
+                </template>
               </span>
             </div>
           </v-expansion-panel-title>

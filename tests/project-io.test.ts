@@ -73,6 +73,17 @@ describe('project export/import', () => {
     expect((imported as Record<string, unknown>).purchases).toBeUndefined()
   })
 
+  it('migrates a v2 export (no ledger) by seeding an empty expenses[]', () => {
+    const { expenses: _expenses, ...rest } = seededBundle()
+    // A v2 export predates the spending ledger — no expenses key at all.
+    const exported = exportProject(rest as never, 'x')
+    exported.schemaVersion = 2
+
+    const imported = importProject(JSON.parse(JSON.stringify(exported)))
+
+    expect(imported.expenses).toEqual([])
+  })
+
   it('dedups colliding selection/purchase ids when folding v1 → items[]', () => {
     const base = { uid: 'owner-1', projectId: 'proj-1', roomId: 'room-kitchen' }
     const { items: _items, ...rest } = seededBundle()

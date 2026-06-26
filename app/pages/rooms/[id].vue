@@ -207,6 +207,13 @@ function addItem() {
         <ItemsSection :room="room" />
       </section>
 
+      <!-- Spending ledger: dated actual-spend line items with a running total.
+           What was spent on this room, distinct from the budget's estimates. -->
+      <section class="mt-8">
+        <h2 class="text-h6 mb-2">Spending ledger</h2>
+        <LedgerSection :room="room" />
+      </section>
+
       <!-- Paint colors: brand, code, finish, surface + swatch per surface -->
       <section class="mt-8">
         <h2 class="text-h6 mb-2">Paint colors</h2>
